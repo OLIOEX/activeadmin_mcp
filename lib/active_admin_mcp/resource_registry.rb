@@ -20,7 +20,9 @@ module ActiveAdminMcp
         return [] unless defined?(ActiveAdmin)
 
         ActiveAdmin.application.namespaces[:admin]&.resources&.select do |r|
-          r.respond_to?(:resource_class) && r.resource_class.respond_to?(:ransack)
+          r.respond_to?(:resource_class) &&
+            r.resource_class.respond_to?(:ransack) &&
+            r.resource_class.table_exists?
         end || []
       end
 
