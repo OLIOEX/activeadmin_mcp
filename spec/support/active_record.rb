@@ -24,11 +24,11 @@ ActiveRecord::Schema.define do
   add_index :mcp_api_tokens, :token_digest, unique: true
 end
 
-# The ApiToken belongs_to :user, class_name: ActiveAdminMcp.config.user_class
+# The ApiToken belongs_to :user, class_name: ActiveadminMcp.config.user_class
 # (defaults to "User"), so a matching constant must exist.
 class User < ActiveRecord::Base
 end
 
 # The model lives under app/ and is normally loaded by Rails eager-loading;
 # require it explicitly for the specs.
-require_relative "../../app/models/active_admin_mcp/api_token"
+require_relative "../../app/models/activeadmin_mcp/api_token"

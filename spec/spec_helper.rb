@@ -3,7 +3,7 @@
 require "rails"
 require "active_record"
 require "action_controller"
-require "active_admin_mcp"
+require "activeadmin_mcp"
 
 RSpec.configure do |config|
   config.expect_with :rspec do |expectations|
@@ -22,6 +22,6 @@ RSpec.configure do |config|
   # Reset the memoized global configuration between examples so that
   # config-touching specs don't leak state into one another.
   config.after do
-    ActiveAdminMcp.instance_variable_set(:@config, nil)
+    ActiveadminMcp.instance_variable_set(:@config, nil)
   end
 end

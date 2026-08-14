@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
 ActiveAdmin.register_page "MCP API Tokens" do
-  menu label: "MCP Tokens", parent: ActiveAdminMcp.config.menu_parent, priority: 100
+  menu label: "MCP Tokens", parent: ActiveadminMcp.config.menu_parent, priority: 100
 
   content do
-    @tokens = ActiveAdminMcp::ApiToken.where(user: send(ActiveAdminMcp.config.current_user_method)).order(created_at: :desc)
+    @tokens = ActiveadminMcp::ApiToken.where(user: send(ActiveadminMcp.config.current_user_method)).order(created_at: :desc)
 
     if flash[:mcp_raw_token]
       panel "New Token Created", class: "mcp-token-created" do
@@ -42,8 +42,8 @@ ActiveAdmin.register_page "MCP API Tokens" do
   end
 
   page_action :create, method: :post do
-    token = ActiveAdminMcp::ApiToken.create!(
-      user: send(ActiveAdminMcp.config.current_user_method),
+    token = ActiveadminMcp::ApiToken.create!(
+      user: send(ActiveadminMcp.config.current_user_method),
       name: params[:mcp_token][:name].presence || "Unnamed token"
     )
     flash[:mcp_raw_token] = token.raw_token
@@ -51,7 +51,7 @@ ActiveAdmin.register_page "MCP API Tokens" do
   end
 
   page_action :destroy, method: :delete do
-    token = ActiveAdminMcp::ApiToken.where(user: send(ActiveAdminMcp.config.current_user_method)).find(params[:token_id])
+    token = ActiveadminMcp::ApiToken.where(user: send(ActiveadminMcp.config.current_user_method)).find(params[:token_id])
     token.destroy!
     flash[:notice] = "Token revoked."
     redirect_to admin_mcp_api_tokens_path()

@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module ActiveAdminMcp
+module ActiveadminMcp
   class RequestHandler
     PROTOCOL_VERSION = "2025-06-18"
 
@@ -34,7 +34,7 @@ module ActiveAdminMcp
     def initialize_result
       {
         protocolVersion: PROTOCOL_VERSION,
-        serverInfo: { name: "active-admin-mcp", version: ActiveAdminMcp::VERSION },
+        serverInfo: { name: "activeadmin-mcp", version: ActiveadminMcp::VERSION },
         capabilities: { tools: {} },
       }
     end

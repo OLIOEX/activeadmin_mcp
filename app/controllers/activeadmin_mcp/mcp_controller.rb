@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module ActiveAdminMcp
+module ActiveadminMcp
   class McpController < ActionController::API
     before_action :authenticate_mcp_token!
 
@@ -18,7 +18,7 @@ module ActiveAdminMcp
     private
 
     def authenticate_mcp_token!
-      return unless ActiveAdminMcp.config.authentication_enabled?
+      return unless ActiveadminMcp.config.authentication_enabled?
 
       token = extract_bearer_token
       unless token
@@ -40,7 +40,7 @@ module ActiveAdminMcp
     end
 
     def extract_bearer_token
-      header = request.headers[ActiveAdminMcp.config.auth_header_name]
+      header = request.headers[ActiveadminMcp.config.auth_header_name]
       return nil unless header&.start_with?("Bearer ")
 
       header.delete_prefix("Bearer ")

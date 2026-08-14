@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-RSpec.describe ActiveAdminMcp::ResourceRegistry do
+RSpec.describe ActiveadminMcp::ResourceRegistry do
   # Builds a stand-in ActiveAdmin resource model class. `ransackable` and
   # `table` toggle whether it looks queryable/backed to the registry.
   def build_model(name:, columns: %w[id], ransackable: true, table: true)
