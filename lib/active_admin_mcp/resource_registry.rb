@@ -11,7 +11,7 @@ module ActiveAdminMcp
         resource = discover.find { |r| r.resource_class.name == name }
         return unless resource
 
-        { name: resource.resource_class.name, model: resource.resource_class }
+        { name: resource.resource_class.name, model: resource.resource_class, config: resource }
       end
 
       private

@@ -82,11 +82,17 @@ RSpec.describe ActiveAdminMcp::ResourceRegistry do
   end
 
   describe ".find" do
-    it "returns the name and model class for a known resource" do
+    it "returns the name, model class and resource config for a known resource" do
       user = build_model(name: "User")
       stub_active_admin([user])
 
-      expect(described_class.find("User")).to eq(name: "User", model: user)
+      result = described_class.find("User")
+
+      expect(result[:name]).to eq("User")
+      expect(result[:model]).to eq(user)
+      # The config carries the ActiveAdmin resource so callers can inspect
+      # actions/authorization (used by the update tool).
+      expect(result[:config].resource_class).to eq(user)
     end
 
     it "returns nil for an unknown resource" do

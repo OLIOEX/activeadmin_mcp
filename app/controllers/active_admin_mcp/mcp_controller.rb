@@ -8,7 +8,7 @@ module ActiveAdminMcp
 
     def call
       request_body = JSON.parse(request.body.read)
-      response = RequestHandler.new.handle(request_body)
+      response = RequestHandler.new(current_user: current_mcp_user).handle(request_body)
 
       response ? render(json: response) : head(:no_content)
     rescue JSON::ParserError => e

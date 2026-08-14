@@ -3,6 +3,7 @@
 require_relative "active_admin_mcp/version"
 require_relative "active_admin_mcp/configuration"
 require_relative "active_admin_mcp/resource_registry"
+require_relative "active_admin_mcp/record_updater"
 require_relative "active_admin_mcp/request_handler"
 require_relative "active_admin_mcp/engine"
 

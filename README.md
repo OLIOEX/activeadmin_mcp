@@ -187,6 +187,7 @@ Or add to your `.mcp.json`:
 |------|-------------|
 | `list_resources` | List all ActiveAdmin resources with their attributes |
 | `query` | Query a resource using Ransack syntax |
+| `update` | Update an existing record, respecting ActiveAdmin's form and authorization rules |
 
 ### Query Examples
 
@@ -197,6 +198,24 @@ Query users where email contains "example.com"
 Find active posts from last week
 → query(resource: "Post", q: { status_eq: "active", created_at_gt: "2025-12-01" })
 ```
+
+### Updating Records
+
+```
+Update a user's name
+→ update(resource: "User", id: 42, attributes: { name: "New name" })
+```
+
+The `update` tool applies the same rules as the ActiveAdmin UI:
+
+- **Editable resources only** — resources registered without the `update` action
+  (e.g. `actions :index, :show`) are refused.
+- **Authorization** — the update is run through the resource namespace's
+  authorization adapter for the authenticated MCP user (CanCanCan, Pundit, etc.),
+  so a user can only update what they're allowed to in admin.
+- **Permitted fields only** — attributes are filtered through the resource's
+  `permit_params`, so only fields the admin form accepts are written; anything
+  else is silently dropped.
 
 ## Original Project
 
