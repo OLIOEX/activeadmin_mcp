@@ -198,13 +198,9 @@ Find active posts from last week
 → query(resource: "Post", q: { status_eq: "active", created_at_gt: "2025-12-01" })
 ```
 
-## Future Ideas
+## Original Project
 
-- [ ] SSE transport support for streaming
-- [ ] Configurable resource allowlist
-- [ ] Write operations (create, update, delete)
-- [ ] Custom tool definitions per resource
-- [ ] Rate limiting
+We forked this project from [https://github.com/betacraft/active_admin_mcp] originally and have continued to extend from there.
 
 ## License
 
