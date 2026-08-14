@@ -4,6 +4,10 @@ module ActiveAdminMcp
   class RequestHandler
     PROTOCOL_VERSION = "2025-06-18"
 
+    def initialize(current_user: nil)
+      @current_user = current_user
+    end
+
     def handle(request)
       id = request["id"]
       method = request["method"]
@@ -56,6 +60,20 @@ module ActiveAdminMcp
               required: ["resource"],
             },
           },
+          {
+            name: "update",
+            description: "Update an existing record. Only fields the resource's ActiveAdmin " \
+                         "form permits are written, and the update respects ActiveAdmin authorization.",
+            inputSchema: {
+              type: "object",
+              properties: {
+                resource: { type: "string", description: "Resource name (e.g., 'User', 'Post')" },
+                id: { type: ["integer", "string"], description: "Primary key of the record to update" },
+                attributes: { type: "object", description: "Attributes to update (e.g., {name: 'New name'})" },
+              },
+              required: %w[resource id attributes],
+            },
+          },
         ],
       }
     end
@@ -67,6 +85,7 @@ module ActiveAdminMcp
       result = case name
                when "list_resources" then tool_list_resources
                when "query" then tool_query(args)
+               when "update" then tool_update(args)
                else { error: "Unknown tool: #{name}" }
                end
 
@@ -86,6 +105,18 @@ module ActiveAdminMcp
 
       records = resource[:model].ransack(q).result.limit(limit)
       { resource: resource[:name], count: records.size, records: records.as_json }
+    end
+
+    def tool_update(args)
+      resource = ResourceRegistry.find(args["resource"])
+      return { error: "Resource not found: #{args['resource']}" } unless resource
+      return { error: "id is required" } if args["id"].nil?
+
+      attributes = args["attributes"] || {}
+      return { error: "attributes are required" } if attributes.empty?
+
+      RecordUpdater.new(resource: resource, current_user: @current_user)
+                   .call(id: args["id"], attributes: attributes)
     end
 
     def success(id, result)

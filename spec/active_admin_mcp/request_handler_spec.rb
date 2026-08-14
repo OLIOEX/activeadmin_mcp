@@ -42,10 +42,10 @@ RSpec.describe ActiveAdminMcp::RequestHandler do
     end
 
     describe "tools/list" do
-      it "advertises the list_resources and query tools" do
+      it "advertises the list_resources, query and update tools" do
         tools = handle("tools/list")[:result][:tools]
 
-        expect(tools.map { |t| t[:name] }).to contain_exactly("list_resources", "query")
+        expect(tools.map { |t| t[:name] }).to contain_exactly("list_resources", "query", "update")
       end
 
       it "marks resource as required on the query tool" do
@@ -53,6 +53,13 @@ RSpec.describe ActiveAdminMcp::RequestHandler do
         query = tools.find { |t| t[:name] == "query" }
 
         expect(query[:inputSchema][:required]).to eq(["resource"])
+      end
+
+      it "requires resource, id and attributes on the update tool" do
+        tools = handle("tools/list")[:result][:tools]
+        update = tools.find { |t| t[:name] == "update" }
+
+        expect(update[:inputSchema][:required]).to contain_exactly("resource", "id", "attributes")
       end
     end
 
@@ -123,6 +130,54 @@ RSpec.describe ActiveAdminMcp::RequestHandler do
 
         expect(call_tool("query", "resource" => "Ghost"))
           .to eq("error" => "Resource not found: Ghost")
+      end
+    end
+
+    describe "update" do
+      it "returns an error when the resource is not found" do
+        allow(ActiveAdminMcp::ResourceRegistry).to receive(:find).with("Ghost").and_return(nil)
+
+        expect(call_tool("update", "resource" => "Ghost", "id" => 1, "attributes" => { "name" => "x" }))
+          .to eq("error" => "Resource not found: Ghost")
+      end
+
+      it "returns an error when no id is given" do
+        allow(ActiveAdminMcp::ResourceRegistry).to receive(:find)
+          .with("User").and_return(name: "User", model: double, config: double)
+
+        expect(call_tool("update", "resource" => "User", "attributes" => { "name" => "x" }))
+          .to eq("error" => "id is required")
+      end
+
+      it "returns an error when no attributes are given" do
+        allow(ActiveAdminMcp::ResourceRegistry).to receive(:find)
+          .with("User").and_return(name: "User", model: double, config: double)
+
+        expect(call_tool("update", "resource" => "User", "id" => 1))
+          .to eq("error" => "attributes are required")
+      end
+
+      it "delegates to the record updater with the resource and current user" do
+        resource = { name: "User", model: double, config: double }
+        allow(ActiveAdminMcp::ResourceRegistry).to receive(:find).with("User").and_return(resource)
+        updater = instance_double(ActiveAdminMcp::RecordUpdater, call: { updated: [:name] })
+        allow(ActiveAdminMcp::RecordUpdater).to receive(:new).and_return(updater)
+
+        handler = described_class.new(current_user: :admin)
+        response = handler.handle(
+          "id" => 1,
+          "method" => "tools/call",
+          "params" => {
+            "name" => "update",
+            "arguments" => { "resource" => "User", "id" => 7, "attributes" => { "name" => "x" } },
+          },
+        )
+        result = JSON.parse(response[:result][:content].first[:text])
+
+        expect(ActiveAdminMcp::RecordUpdater).to have_received(:new)
+          .with(resource: resource, current_user: :admin)
+        expect(updater).to have_received(:call).with(id: 7, attributes: { "name" => "x" })
+        expect(result).to eq("updated" => ["name"])
       end
     end
 
