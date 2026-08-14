@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-RSpec.describe ActiveAdminMcp::RequestHandler do
+RSpec.describe ActiveadminMcp::RequestHandler do
   subject(:handler) { described_class.new }
 
   def handle(method, params = nil, id: 1)
@@ -17,7 +17,7 @@ RSpec.describe ActiveAdminMcp::RequestHandler do
         result = handle("initialize")[:result]
 
         expect(result[:protocolVersion]).to eq(described_class::PROTOCOL_VERSION)
-        expect(result[:serverInfo]).to eq(name: "active-admin-mcp", version: ActiveAdminMcp::VERSION)
+        expect(result[:serverInfo]).to eq(name: "activeadmin-mcp", version: ActiveadminMcp::VERSION)
         expect(result[:capabilities]).to eq(tools: {})
       end
 
@@ -83,7 +83,7 @@ RSpec.describe ActiveAdminMcp::RequestHandler do
     describe "list_resources" do
       it "returns the registry's resources" do
         resources = [{ name: "User", table: "users", attributes: %w[id email] }]
-        allow(ActiveAdminMcp::ResourceRegistry).to receive(:all).and_return(resources)
+        allow(ActiveadminMcp::ResourceRegistry).to receive(:all).and_return(resources)
 
         expect(call_tool("list_resources")).to eq("resources" => [
           { "name" => "User", "table" => "users", "attributes" => %w[id email] },
@@ -100,7 +100,7 @@ RSpec.describe ActiveAdminMcp::RequestHandler do
         allow(records).to receive(:as_json).and_return(records)
         allow(records).to receive(:size).and_return(records.length)
         allow(model).to receive(:ransack).and_return(double("search", result: relation))
-        allow(ActiveAdminMcp::ResourceRegistry).to receive(:find)
+        allow(ActiveadminMcp::ResourceRegistry).to receive(:find)
           .with("User").and_return(name: "User", model: model)
       end
 
@@ -126,7 +126,7 @@ RSpec.describe ActiveAdminMcp::RequestHandler do
       end
 
       it "returns an error when the resource is not found" do
-        allow(ActiveAdminMcp::ResourceRegistry).to receive(:find).with("Ghost").and_return(nil)
+        allow(ActiveadminMcp::ResourceRegistry).to receive(:find).with("Ghost").and_return(nil)
 
         expect(call_tool("query", "resource" => "Ghost"))
           .to eq("error" => "Resource not found: Ghost")
@@ -135,14 +135,14 @@ RSpec.describe ActiveAdminMcp::RequestHandler do
 
     describe "update" do
       it "returns an error when the resource is not found" do
-        allow(ActiveAdminMcp::ResourceRegistry).to receive(:find).with("Ghost").and_return(nil)
+        allow(ActiveadminMcp::ResourceRegistry).to receive(:find).with("Ghost").and_return(nil)
 
         expect(call_tool("update", "resource" => "Ghost", "id" => 1, "attributes" => { "name" => "x" }))
           .to eq("error" => "Resource not found: Ghost")
       end
 
       it "returns an error when no id is given" do
-        allow(ActiveAdminMcp::ResourceRegistry).to receive(:find)
+        allow(ActiveadminMcp::ResourceRegistry).to receive(:find)
           .with("User").and_return(name: "User", model: double, config: double)
 
         expect(call_tool("update", "resource" => "User", "attributes" => { "name" => "x" }))
@@ -150,7 +150,7 @@ RSpec.describe ActiveAdminMcp::RequestHandler do
       end
 
       it "returns an error when no attributes are given" do
-        allow(ActiveAdminMcp::ResourceRegistry).to receive(:find)
+        allow(ActiveadminMcp::ResourceRegistry).to receive(:find)
           .with("User").and_return(name: "User", model: double, config: double)
 
         expect(call_tool("update", "resource" => "User", "id" => 1))
@@ -159,9 +159,9 @@ RSpec.describe ActiveAdminMcp::RequestHandler do
 
       it "delegates to the record updater with the resource and current user" do
         resource = { name: "User", model: double, config: double }
-        allow(ActiveAdminMcp::ResourceRegistry).to receive(:find).with("User").and_return(resource)
-        updater = instance_double(ActiveAdminMcp::RecordUpdater, call: { updated: [:name] })
-        allow(ActiveAdminMcp::RecordUpdater).to receive(:new).and_return(updater)
+        allow(ActiveadminMcp::ResourceRegistry).to receive(:find).with("User").and_return(resource)
+        updater = instance_double(ActiveadminMcp::RecordUpdater, call: { updated: [:name] })
+        allow(ActiveadminMcp::RecordUpdater).to receive(:new).and_return(updater)
 
         handler = described_class.new(current_user: :admin)
         response = handler.handle(
@@ -174,7 +174,7 @@ RSpec.describe ActiveAdminMcp::RequestHandler do
         )
         result = JSON.parse(response[:result][:content].first[:text])
 
-        expect(ActiveAdminMcp::RecordUpdater).to have_received(:new)
+        expect(ActiveadminMcp::RecordUpdater).to have_received(:new)
           .with(resource: resource, current_user: :admin)
         expect(updater).to have_received(:call).with(id: 7, attributes: { "name" => "x" })
         expect(result).to eq("updated" => ["name"])

@@ -2,10 +2,10 @@
 
 require "spec_helper"
 
-RSpec.describe ActiveAdminMcp do
+RSpec.describe ActiveadminMcp do
   describe ".config" do
     it "returns a Configuration instance" do
-      expect(described_class.config).to be_a(ActiveAdminMcp::Configuration)
+      expect(described_class.config).to be_a(ActiveadminMcp::Configuration)
     end
 
     it "memoizes the same instance across calls" do

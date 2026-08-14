@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module ActiveAdminMcp
+module ActiveadminMcp
   class Configuration
     MOUNT_STRATEGIES = %i[prepend append none].freeze
 

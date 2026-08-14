@@ -3,7 +3,7 @@
 require "rails/generators"
 require "rails/generators/active_record"
 
-module ActiveAdminMcp
+module ActiveadminMcp
   module Generators
     class InstallGenerator < Rails::Generators::Base
       include ActiveRecord::Generators::Migration
@@ -16,7 +16,7 @@ module ActiveAdminMcp
                                 desc: "Path for ActiveAdmin page file"
 
       def copy_initializer
-        template "initializer.rb", "config/initializers/active_admin_mcp.rb"
+        template "initializer.rb", "config/initializers/activeadmin_mcp.rb"
       end
 
       def copy_migration
@@ -34,7 +34,7 @@ module ActiveAdminMcp
       def set_auth_config
         return unless auth_method
 
-        gsub_file "config/initializers/active_admin_mcp.rb",
+        gsub_file "config/initializers/activeadmin_mcp.rb",
                   "# config.authentication_method = :devise_token",
                   "config.authentication_method = :#{auth_method}"
       end
@@ -42,7 +42,7 @@ module ActiveAdminMcp
       def show_instructions
         say ""
         say "=" * 60, :green
-        say " ActiveAdminMcp installed!", :green
+        say " ActiveadminMcp installed!", :green
         say "=" * 60, :green
         say ""
         say "Your MCP server is available at: /mcp"
@@ -67,7 +67,7 @@ module ActiveAdminMcp
           say "  claude mcp add --transport http #{app_name} http://localhost:3000/mcp/"
           say ""
           say "To add authentication later:"
-          say "  rails generate active_admin_mcp:install --auth devise_token"
+          say "  rails generate activeadmin_mcp:install --auth devise_token"
         end
 
         say ""

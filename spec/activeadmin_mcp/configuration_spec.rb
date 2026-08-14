@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-RSpec.describe ActiveAdminMcp::Configuration do
+RSpec.describe ActiveadminMcp::Configuration do
   subject(:config) { described_class.new }
 
   describe "defaults" do

@@ -1,0 +1,77 @@
+name: Release
+
+# Publishes the gem to RubyGems.org via Trusted Publishing (OIDC) whenever a
+# GitHub Release is published. The release tag (e.g. v0.1.1) is the source of
+# truth for the version: the workflow writes it into lib/activeadmin_mcp/version.rb,
+# builds and publishes the gem, then commits the version bump back to the
+# default branch. No API key is stored — RubyGems verifies this workflow via
+# OIDC. See RELEASING.md for the one-time RubyGems setup.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: rubygems
+    permissions:
+      contents: write   # commit the version bump back to the default branch
+      id-token: write   # exchange the OIDC token with RubyGems
+
+    steps:
+      - name: Derive version from release tag
+        id: version
+        run: |
+          tag="${{ github.event.release.tag_name }}"
+          version="${tag#v}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::Release tag '$tag' is not a valid version (expected vX.Y.Z)"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Check out default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+
+      - name: Write version file
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          sed -i -E "s/VERSION = \".*\"/VERSION = \"${version}\"/" lib/activeadmin_mcp/version.rb
+          grep -q "VERSION = \"${version}\"" lib/activeadmin_mcp/version.rb
+
+      - name: Run specs
+        run: bundle exec rspec
+
+      - name: Configure RubyGems credentials (OIDC)
+        uses: rubygems/configure-rubygems-credentials@v2.1.0
+
+      - name: Build and push gem
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          gem build activeadmin_mcp.gemspec
+          gem push "activeadmin_mcp-${version}.gem"
+
+      - name: Commit version bump to default branch
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          if git diff --quiet -- lib/activeadmin_mcp/version.rb; then
+            echo "version.rb already at ${version}; nothing to commit."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add lib/activeadmin_mcp/version.rb
+            git commit -m "Bump version to ${version}"
+            git push origin "HEAD:${{ github.event.repository.default_branch }}"
+          fi

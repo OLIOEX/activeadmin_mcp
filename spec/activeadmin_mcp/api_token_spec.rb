@@ -3,7 +3,7 @@
 require "spec_helper"
 require "support/active_record"
 
-RSpec.describe ActiveAdminMcp::ApiToken do
+RSpec.describe ActiveadminMcp::ApiToken do
   let(:user) { User.create!(email: "admin@example.com") }
 
   after do

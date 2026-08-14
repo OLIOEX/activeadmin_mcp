@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module ActiveAdminMcp
+module ActiveadminMcp
   # Updates a single ActiveAdmin-managed record, enforcing the same three gates
   # the admin UI would: the resource must expose the update action, the current
   # user must be authorized, and only fields the admin form permits are written.

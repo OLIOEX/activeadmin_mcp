@@ -3,11 +3,11 @@
 require "digest"
 require "securerandom"
 
-module ActiveAdminMcp
+module ActiveadminMcp
   class ApiToken < ActiveRecord::Base
     self.table_name = "mcp_api_tokens"
 
-    belongs_to :user, class_name: ActiveAdminMcp.config.user_class
+    belongs_to :user, class_name: ActiveadminMcp.config.user_class
 
     attr_accessor :raw_token
 

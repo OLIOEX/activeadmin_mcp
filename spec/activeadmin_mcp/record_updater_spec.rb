@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-RSpec.describe ActiveAdminMcp::RecordUpdater do
+RSpec.describe ActiveadminMcp::RecordUpdater do
   # A stand-in for an ActiveAdmin controller compiled from `permit_params`.
   # `permitted` is the set of fields the admin form would allow.
   def build_controller(param_key:, permitted:)
