@@ -128,4 +128,91 @@ RSpec.describe ActiveadminMcp::RecordUpdater do
     expect(record).to have_received(:update).with(error: "boom")
     expect(result[:updated]).to eq([:error])
   end
+
+  # Resources that declare writable fields through a `form do ... end` block
+  # rather than `permit_params`. ActiveAdmin's default `permitted_params` for
+  # such a resource returns nil, so the updater derives the allowed fields from
+  # the form inputs instead.
+  describe "deriving permitted fields from the form block" do
+    # A controller that has not declared permit_params: `permitted_params` is nil.
+    def build_formless_controller
+      Class.new do
+        attr_accessor :params
+        def permitted_params = nil
+        private :permitted_params
+      end
+    end
+
+    def build_form_resource(model:, adapter:, param_key: :widget, form_block:,
+                            page_presenters: nil)
+      namespace = double("namespace", authorization_adapter: adapter)
+      presenters = page_presenters
+      presenters ||= { form: double("form presenter", block: form_block) } if form_block
+      config = double(
+        "config",
+        defined_actions: %i[index show new create edit update destroy],
+        namespace: namespace,
+        controller: build_formless_controller,
+        param_key: param_key,
+        page_presenters: presenters || {},
+      )
+      { name: "Widget", model: model, config: config }
+    end
+
+    it "permits fields declared as form inputs and drops the rest" do
+      record = double("record", id: 1, as_json: {})
+      allow(record).to receive(:update).and_return(true)
+      form_block = proc do |_f|
+        inputs do
+          input :name
+          input :role
+        end
+        actions
+      end
+      resource = build_form_resource(model: model_finding(record), adapter: permit_all, form_block: form_block)
+
+      update(resource, attributes: { "name" => "Renamed", "role" => "admin", "secret" => "x" })
+
+      expect(record).to have_received(:update).with(name: "Renamed", role: "admin")
+    end
+
+    it "tolerates arbitrary input options, helper calls and nesting in the form block" do
+      record = double("record", id: 1, as_json: {})
+      allow(record).to receive(:update).and_return(true)
+      form_block = proc do |_f|
+        semantic_errors
+        inputs "Details" do
+          input :user_id, as: :hidden
+          input :name, as: :string, hint: some_undefined_helper
+          input :country, as: :select, collection: %w[UK IE]
+        end
+        actions
+      end
+      resource = build_form_resource(model: model_finding(record), adapter: permit_all, form_block: form_block)
+
+      update(resource, attributes: { "user_id" => 5, "name" => "N", "country" => "UK", "nope" => 1 })
+
+      expect(record).to have_received(:update).with(user_id: 5, name: "N", country: "UK")
+    end
+
+    it "fails closed when neither permit_params nor a form block is available" do
+      record = double("record", id: 1)
+      resource = build_form_resource(model: model_finding(record), adapter: permit_all,
+                                     form_block: nil, page_presenters: {})
+
+      result = update(resource, attributes: { "name" => "x" })
+
+      expect(result[:error]).to match(/could not determine permitted attributes/i)
+    end
+
+    it "fails closed when the form block raises during introspection" do
+      record = double("record", id: 1)
+      form_block = proc { |_f| raise "boom" }
+      resource = build_form_resource(model: model_finding(record), adapter: permit_all, form_block: form_block)
+
+      result = update(resource, attributes: { "name" => "x" })
+
+      expect(result[:error]).to match(/could not determine permitted attributes/i)
+    end
+  end
 end

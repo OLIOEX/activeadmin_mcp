@@ -58,24 +58,47 @@ module ActiveadminMcp
       adapter_class.new(config, @current_user).authorized?(UPDATE, record)
     end
 
-    # Runs the incoming attributes through the resource controller's own
-    # permitted_params (compiled from `permit_params`), so we accept exactly what
-    # the admin form accepts. Fails closed if that cannot be resolved.
+    # Resolves the fields we may write, accepting exactly what the admin form
+    # accepts. Prefers the resource's own `permit_params` (via the controller's
+    # compiled permitted_params); when a resource declares its writable fields
+    # through a `form do ... end` block instead — as ActiveAdmin's default
+    # permitted_params then returns nil — derives them from the form inputs.
+    # Fails closed if neither can be resolved.
     def permitted_attributes(config, attributes)
+      from_permit_params(config, attributes) ||
+        from_form(config, attributes) ||
+        raise(PermitError, "Could not determine permitted attributes: #{@resource[:name]}")
+    end
+
+    def from_permit_params(config, attributes)
       param_key = config.param_key.to_sym
       controller = config.controller.new
-
-      unless controller.respond_to?(:permitted_params, true)
-        raise PermitError, "Resource does not declare permit_params: #{@resource[:name]}"
-      end
+      return nil unless controller.respond_to?(:permitted_params, true)
 
       controller.params = ActionController::Parameters.new(param_key => attributes)
-      permitted = controller.send(:permitted_params)[param_key]
-      permitted ? permitted.to_h.symbolize_keys : {}
-    rescue PermitError
-      raise
-    rescue StandardError => e
-      raise PermitError, "Could not determine permitted attributes: #{e.message}"
+      permitted = controller.send(:permitted_params)
+      scoped = permitted && permitted[param_key]
+      scoped ? scoped.to_h.symbolize_keys : nil
+    rescue StandardError
+      nil
+    end
+
+    def from_form(config, attributes)
+      fields = form_fields(config)
+      return nil if fields.empty?
+
+      ActionController::Parameters.new(attributes).permit(*fields).to_h.symbolize_keys
+    rescue StandardError
+      nil
+    end
+
+    def form_fields(config)
+      return [] unless config.respond_to?(:page_presenters)
+
+      block = config.page_presenters[:form]&.block
+      return [] unless block
+
+      FormFieldCollector.new.collect(&block)
     end
 
     def error(message, details: nil)
