@@ -21,11 +21,17 @@ The server is a Rails engine mounted inside your application (by default at
 - **Queries use Ransack.** The `query` tool passes its arguments straight to
   [Ransack](https://activerecord-hackery.github.io/ransack/), the same search
   library ActiveAdmin uses for filtering.
+- **Reads go through ActiveAdmin too.** `list_resources` and `query` run through
+  the same authorization adapter (CanCanCan, Pundit, etc.) as the authenticated
+  MCP user: resources the user cannot read are hidden from the listing and
+  refused by `query`, and every query is scoped with the adapter's
+  `scope_collection`, so the MCP user only ever sees the records they could see
+  in the admin UI. With ActiveAdmin's default adapter every check passes, so
+  applications without an authorization adapter are unaffected.
 - **Writes go through ActiveAdmin.** The `update` tool only writes fields
   allowed by the resource's `permit_params`, refuses resources that don't
   register the `update` action, and runs every change through your
-  authorization adapter (CanCanCan, Pundit, etc.) as the authenticated MCP
-  user.
+  authorization adapter as the authenticated MCP user.
 - **Authentication is optional but built in.** Enable Bearer-token auth and the
   installer adds an "MCP Tokens" management page to your ActiveAdmin panel.
 
@@ -57,8 +63,8 @@ read/query setup without authentication.
 
 | Tool | Description |
 |------|-------------|
-| `list_resources` | List every ActiveAdmin resource along with its attributes. |
-| `query` | Query a resource using Ransack syntax (`limit` defaults to 25, capped at 100). |
+| `list_resources` | List the ActiveAdmin resources the current user may read, along with their attributes. |
+| `query` | Query a resource the current user may read, using Ransack syntax, scoped to the records they may access (`limit` defaults to 25, capped at 100). |
 | `update` | Update an existing record, honouring ActiveAdmin's permitted params and authorization. |
 
 ### Query examples

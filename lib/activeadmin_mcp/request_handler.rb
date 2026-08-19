@@ -44,12 +44,15 @@ module ActiveadminMcp
         tools: [
           {
             name: "list_resources",
-            description: "List all ActiveAdmin resources with their attributes",
+            description: "List the ActiveAdmin resources the authenticated user is authorized " \
+                         "to read, with their attributes",
             inputSchema: { type: "object", properties: {} },
           },
           {
             name: "query",
-            description: "Query an ActiveAdmin resource using Ransack syntax",
+            description: "Query an ActiveAdmin resource using Ransack syntax. Respects ActiveAdmin " \
+                         "authorization: the resource must be readable by the authenticated user, " \
+                         "and results are scoped to the records they may access.",
             inputSchema: {
               type: "object",
               properties: {
@@ -93,18 +96,21 @@ module ActiveadminMcp
     end
 
     def tool_list_resources
-      { resources: ResourceRegistry.all }
+      entries = ResourceRegistry.resources.select { |entry| authorized_to_read?(entry) }
+      { resources: entries.map { |entry| ResourceRegistry.resource_info(entry) } }
     end
 
     def tool_query(args)
       resource = ResourceRegistry.find(args["resource"])
       return { error: "Resource not found: #{args['resource']}" } unless resource
+      return { error: "Not authorized to query #{resource[:name]}" } unless authorized_to_read?(resource)
 
       limit = [args["limit"] || 25, 100].min
       q = args["q"] || {}
 
-      records = resource[:model].ransack(q).result.limit(limit)
-      { resource: resource[:name], count: records.size, records: records.as_json }
+      relation = resource[:model].ransack(q).result
+      records = authorization(resource).scope_collection(relation, Authorization::READ).limit(limit)
+      { resource: resource[:name], count: records.size, records: filter_sensitive(records.as_json) }
     end
 
     def tool_update(args)
@@ -117,6 +123,21 @@ module ActiveadminMcp
 
       RecordUpdater.new(resource: resource, current_user: @current_user)
                    .call(id: args["id"], attributes: attributes)
+    end
+
+    def authorized_to_read?(resource)
+      authorization(resource).authorized?(Authorization::READ, resource[:model])
+    end
+
+    def authorization(resource)
+      Authorization.for(resource[:config], @current_user)
+    end
+
+    def filter_sensitive(records)
+      sensitive = ResourceRegistry.sensitive_attributes
+      Array(records).map do |record|
+        record.is_a?(Hash) ? record.except(*sensitive) : record
+      end
     end
 
     def success(id, result)

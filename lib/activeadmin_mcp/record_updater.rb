@@ -53,9 +53,7 @@ module ActiveadminMcp
     end
 
     def authorized?(config, record)
-      adapter_class = config.namespace.authorization_adapter
-      adapter_class = adapter_class.constantize if adapter_class.is_a?(String)
-      adapter_class.new(config, @current_user).authorized?(UPDATE, record)
+      Authorization.for(config, @current_user).authorized?(UPDATE, record)
     end
 
     # Resolves the fields we may write, accepting exactly what the admin form
