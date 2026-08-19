@@ -81,6 +81,19 @@ RSpec.describe ActiveadminMcp::ResourceRegistry do
     end
   end
 
+  describe ".resources" do
+    it "returns the name, model class and resource config for each queryable resource" do
+      user = build_model(name: "User")
+      stub_active_admin([user])
+
+      entry = described_class.resources.first
+
+      expect(entry[:name]).to eq("User")
+      expect(entry[:model]).to eq(user)
+      expect(entry[:config].resource_class).to eq(user)
+    end
+  end
+
   describe ".find" do
     it "returns the name, model class and resource config for a known resource" do
       user = build_model(name: "User")
