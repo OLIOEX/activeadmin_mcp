@@ -37,4 +37,18 @@ RSpec.describe ActiveadminMcp::ActiveAdminExt do
     expect(options).to include(method: :post)
     expect(options).to have_key(:mcp)
   end
+
+  # If ActiveAdmin ever renames these classes, ActionCatalog's respond_to?
+  # guard makes every opted-in tool vanish from tools/list with nothing said
+  # anywhere. A warning is the only signal an operator would get.
+  describe "when ActiveAdmin does not provide the expected classes" do
+    it "warns and returns false rather than failing silently" do
+      allow(described_class).to receive(:applicable?).and_return(false)
+      messages = []
+      allow(described_class).to receive(:warn) { |message| messages << message }
+
+      expect(described_class.apply!).to be(false)
+      expect(messages.join).to include("no opted-in actions will be exposed")
+    end
+  end
 end

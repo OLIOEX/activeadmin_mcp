@@ -20,12 +20,22 @@ module ActiveadminMcp
     # have run, so this is called from ActiveAdmin.after_load rather than at
     # require time.
     def self.apply!
-      return false unless defined?(::ActiveAdmin::ControllerAction)
-      return false unless defined?(::ActiveAdmin::BatchAction)
+      unless applicable?
+        # Without these readers every opted-in action silently vanishes from
+        # tools/list, because ActionCatalog can no longer see an mcp: option
+        # anywhere. Say so rather than shipping a feature that is quietly off.
+        warn("[activeadmin_mcp] ActiveAdmin::ControllerAction / ActiveAdmin::BatchAction not found: " \
+             "MCP action options cannot be read, so no opted-in actions will be exposed as tools.")
+        return false
+      end
 
       ::ActiveAdmin::ControllerAction.include(ActionOptions)
       ::ActiveAdmin::BatchAction.include(ActionOptions)
       true
+    end
+
+    def self.applicable?
+      defined?(::ActiveAdmin::ControllerAction) && defined?(::ActiveAdmin::BatchAction) ? true : false
     end
   end
 end

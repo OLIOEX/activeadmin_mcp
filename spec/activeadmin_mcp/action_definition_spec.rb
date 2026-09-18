@@ -133,6 +133,56 @@ RSpec.describe ActiveadminMcp::ActionDefinition do
     expect(definition.errors).to include(match(/param ids is reserved/))
   end
 
+  # ActiveAdmin's batch_action controller method slices submitted inputs down
+  # to the declared form: keys, so a param declared only under mcp: would be
+  # advertised, required, validated, encoded — and then dropped before the
+  # block ever saw it.
+  it "is invalid when a batch param is missing from the ActiveAdmin form hash" do
+    action = batch_action(:suspend, form: { reason: :text }, mcp: {
+      description: "Suspend",
+      params: { reason: { hint: "Why" }, notify_manager: { type: :boolean, required: true } }
+    })
+
+    definition = described_class.build(config: build_config, action: action, kind: :batch)
+
+    expect(definition).not_to be_valid
+    expect(definition.errors).to include(match(/param notify_manager is not in the batch action's form/))
+  end
+
+  it "is valid when every batch param is in the form hash" do
+    action = batch_action(:suspend, form: { reason: :text, notify: :checkbox }, mcp: {
+      description: "Suspend",
+      params: { reason: { hint: "Why" } }
+    })
+
+    definition = described_class.build(config: build_config, action: action, kind: :batch)
+
+    expect(definition).to be_valid
+  end
+
+  # No form: hash means ActiveAdmin slices nothing, so there is nothing to drop.
+  it "allows declared params on a batch action with no form hash" do
+    action = batch_action(:suspend, form: nil, mcp: {
+      description: "Suspend",
+      params: { reason: { type: :string } }
+    })
+
+    definition = described_class.build(config: build_config, action: action, kind: :batch)
+
+    expect(definition).to be_valid
+  end
+
+  it "does not apply the batch form rule to member actions" do
+    action = member_action(:create_warning, mcp: {
+      description: "Record a warning",
+      params: { reason: { type: :string } }
+    })
+
+    definition = described_class.build(config: build_config, action: action, kind: :member)
+
+    expect(definition).to be_valid
+  end
+
   it "is valid when a collection action declares a param named id" do
     action = double("controller_action", name: :process, http_verb: :post, mcp_options: {
       description: "Process something",

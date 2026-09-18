@@ -106,6 +106,7 @@ module ActiveadminMcp
       @errors << "#{tool_name}: unknown kind #{@kind}" unless KINDS.include?(@kind)
 
       reserved = reserved_param_name
+      form_keys = batch_form_keys
       params.each do |name, spec|
         unless spec.is_a?(Hash)
           @errors << "#{tool_name}: param #{name} must be a Hash"
@@ -114,11 +115,33 @@ module ActiveadminMcp
 
         @errors << "#{tool_name}: param #{name} is reserved" if name == reserved
 
+        # ActiveAdmin's own batch_action controller method slices the submitted
+        # inputs down to the declared form: keys before calling the block, so a
+        # param declared only under mcp: would be advertised, validated, sent —
+        # and then silently dropped. Refuse it at declaration time instead.
+        if form_keys && !form_keys.include?(name)
+          @errors << "#{tool_name}: param #{name} is not in the batch action's form: hash, " \
+                     "so ActiveAdmin would drop it before the action runs"
+        end
+
         type = spec[:type]
         @errors << "#{tool_name}: param #{name} has unknown type #{type}" if type && !TYPES.include?(type.to_sym)
       end
 
       @errors << "#{tool_name}: permission must be callable" if permission && !permission.respond_to?(:call)
+    end
+
+    # The declared form: keys of a batch action, or nil when this is not a batch
+    # action or the batch action declares no form at all (in which case
+    # ActiveAdmin passes inputs through unsliced).
+    def batch_form_keys
+      return nil unless @kind == :batch
+      return nil unless @action.respond_to?(:inputs)
+
+      form = @action.inputs
+      return nil unless form.is_a?(Hash)
+
+      form.keys.map(&:to_sym)
     end
 
     def reserved_param_name
