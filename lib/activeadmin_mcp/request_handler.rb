@@ -41,8 +41,13 @@ module ActiveadminMcp
       { tools: built_in_tools + action_tools }
     end
 
+    # Both gates run before the schema is built, never after: ActionSchema calls
+    # the application's `suggestions:` procs, which read the database. Filtering
+    # an already-assembled list would mean those procs had already run — and
+    # their values already been read — for a user authorized for none of it.
     def action_tools
       ActionCatalog.all.filter_map do |definition|
+        next unless authorized_to_run?(definition)
         next unless authorized_to_list?(definition)
 
         {
@@ -53,19 +58,37 @@ module ActiveadminMcp
       end
     end
 
+    # The same authorization adapter check ActionRunner makes before dispatch,
+    # and the one list_resources makes for reads. There is no record at listing
+    # time, so the subject is the resource class.
+    def authorized_to_run?(definition)
+      Authorization.for(definition.config, @current_user)
+                   .authorized?(definition.action_name, definition.config.resource_class)
+    rescue StandardError => e
+      warn("[activeadmin_mcp] hiding #{definition.tool_name}: authorization check raised #{e.class}: #{e.message}")
+      false
+    end
+
     # Collection and batch actions whose permission proc takes no record can be
     # resolved now, so the tool is simply hidden. A member action's proc needs a
     # record, so its tool stays listed and refusal happens at call time.
+    #
+    # The proc is evaluated in controller context, exactly as ActionRunner
+    # evaluates it at call time, so `current_admin_user`, `can?` and the rest of
+    # the admin helpers are in scope. Evaluating it bare would make every such
+    # proc raise NameError and hide its tool from everybody.
     def authorized_to_list?(definition)
       permission = definition.permission
       return true unless permission
       return true unless permission.respond_to?(:arity) && permission.arity.zero?
 
-      begin
-        !!permission.call
-      rescue StandardError
-        false
-      end
+      controller = ControllerDispatcher.new(config: definition.config, current_user: @current_user)
+                                       .controller_with_mcp_user
+      !!::MethodOrProcHelper.render_in_context(controller, permission)
+    rescue StandardError => e
+      # One broken proc hides its own tool and nothing else, but it says so.
+      warn("[activeadmin_mcp] hiding #{definition.tool_name}: permission proc raised #{e.class}: #{e.message}")
+      false
     end
 
     def built_in_tools
