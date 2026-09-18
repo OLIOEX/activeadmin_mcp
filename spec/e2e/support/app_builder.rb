@@ -21,10 +21,14 @@ module E2E
     ADMIN_EMAIL = "admin@example.com"
     ADMIN_PASSWORD = "password"
 
+    # Rails 7.2's ActiveSupport::JSON.decode still calls JSON.parse with the
+    # quirks_mode keyword, which the json gem dropped in 2.9.0. Any request
+    # with a JSON body 500s until this is pinned back below that line.
     GEMFILE_ADDITIONS = <<~RUBY
       gem "activeadmin", "~> 3.2"
       gem "devise"
       gem "sassc-rails"
+      gem "json", "< 2.9"
       gem "activeadmin_mcp", path: "GEM_PATH"
     RUBY
 
