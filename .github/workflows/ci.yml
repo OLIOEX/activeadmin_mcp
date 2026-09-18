@@ -45,3 +45,38 @@ jobs:
         with:
           name: activeadmin-mcp-mcpb
           path: activeadmin-mcp.mcpb
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+
+      # The generated host application is expensive to build (a full
+      # `bundle install` against rubygems.org) and its contents are decided
+      # by the builder source, so that is what the key hashes. Bump the v1
+      # prefix by hand when a new Rails or ActiveAdmin release changes what
+      # the generators produce without the builder itself changing.
+      - name: Cache the generated host application
+        uses: actions/cache@v4
+        with:
+          path: tmp/e2e_app
+          key: e2e-app-v1-${{ runner.os }}-${{ hashFiles('spec/e2e/support/app_builder.rb') }}
+
+      - name: Run the end-to-end suite
+        run: bundle exec rake e2e
+
+      - name: Upload the application log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-rails-log
+          path: tmp/e2e_app/log/e2e.log
+          if-no-files-found: ignore
