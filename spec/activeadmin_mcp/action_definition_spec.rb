@@ -63,6 +63,31 @@ RSpec.describe ActiveadminMcp::ActionDefinition do
     expect(definition.params).to eq(reason: { type: :string, hint: "Shown to the volunteer" })
   end
 
+  it "properly handles acronyms and namespaced resource names in tool names" do
+    action_acronym = member_action(:create_warning, mcp: {
+      description: "Record a warning",
+      params: {}
+    })
+    action_namespaced = member_action(:create_warning, mcp: {
+      description: "Record a warning",
+      params: {}
+    })
+
+    definition_acronym = described_class.build(
+      config: build_config(name: "APIKey"),
+      action: action_acronym,
+      kind: :member
+    )
+    definition_namespaced = described_class.build(
+      config: build_config(name: "Admin::Volunteer"),
+      action: action_namespaced,
+      kind: :member
+    )
+
+    expect(definition_acronym.tool_name).to eq("api_key_create_warning")
+    expect(definition_namespaced.tool_name).to eq("admin_volunteer_create_warning")
+  end
+
   it "is invalid when a param declares an unrecognised type" do
     action = member_action(:create_warning, mcp: {
       description: "Record a warning",

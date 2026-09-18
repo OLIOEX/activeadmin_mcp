@@ -51,7 +51,7 @@ module ActiveadminMcp
     end
 
     def tool_name
-      "#{resource_name.gsub('::', '_').gsub(/([a-z\d])([A-Z])/, '\1_\2').downcase}_#{action_name}"
+      "#{resource_name.underscore.tr('/', '_')}_#{action_name}"
     end
 
     def description
