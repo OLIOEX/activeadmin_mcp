@@ -20,7 +20,11 @@ The server is a Rails engine mounted inside your application (by default at
   are the ones you have already configured.
 - **Queries use Ransack.** The `query` tool passes its arguments straight to
   [Ransack](https://activerecord-hackery.github.io/ransack/), the same search
-  library ActiveAdmin uses for filtering.
+  library ActiveAdmin uses for filtering. The tool calls `ransack` on the
+  model directly rather than going through an ActiveAdmin filter form, so on
+  Ransack 4 the model must allowlist the attributes it wants queryable via
+  `ransackable_attributes`; without that allowlist, `query` against that
+  resource will raise instead of returning an empty result.
 - **Reads go through ActiveAdmin too.** `list_resources` and `query` run through
   the same authorization adapter (CanCanCan, Pundit, etc.) as the authenticated
   MCP user: resources the user cannot read are hidden from the listing and
@@ -342,6 +346,36 @@ After checking out the repo, install dependencies and run the test suite:
 ```bash
 bundle install
 bundle exec rspec
+```
+
+### Running the tests
+
+`bundle exec rspec` (or `rake spec`, the default rake task) runs the unit
+suite only — it's fast, and it's what CI's `rspec` job runs. It never touches
+`spec/e2e`; that directory is excluded via `.rspec`.
+
+The end-to-end suite lives in `spec/e2e` and runs separately:
+
+```bash
+bundle exec rake e2e
+```
+
+This generates a real Rails 7.2 + ActiveAdmin + Devise application under
+`tmp/e2e_app`, installs the gem into it with `path:`, boots it under Puma,
+and drives it over real HTTP with a minimal JSON-RPC client — the same way
+Claude Code or any other MCP client would. It's how the gem is tested
+against ActiveAdmin's and Ransack's actual behaviour rather than mocks.
+
+The generated application is expensive to build (a full `bundle install`
+against rubygems.org, and a `gem install rails` if Rails 7.2.2.2 isn't
+already on your system) so it's cached in `tmp/e2e_app` between runs, keyed
+on the contents of `spec/e2e/support/app_builder.rb`. The first run costs a
+few minutes and needs network access; edit that file and the next run
+rebuilds from scratch, otherwise reruns are quick. Force a rebuild without
+editing anything by setting `E2E_REBUILD=1`:
+
+```bash
+E2E_REBUILD=1 bundle exec rake e2e
 ```
 
 ## Contributing

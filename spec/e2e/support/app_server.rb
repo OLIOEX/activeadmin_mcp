@@ -57,8 +57,8 @@ module E2E
           { "RAILS_ENV" => "development" },
           "bin/rails", "server", "-p", port.to_s, "-b", "127.0.0.1",
           chdir: AppBuilder::APP_PATH,
-          out: LOG_PATH,
-          err: [LOG_PATH, "a"]
+          out: [LOG_PATH, "a"],
+          err: [:child, :out]
         )
       end
 
@@ -95,20 +95,31 @@ module E2E
 
     # Polls the mount point rather than the root path: a 401 or a JSON-RPC
     # error both mean the engine is mounted and answering, which is all the
-    # suite needs to know before it starts.
+    # suite needs to know before it starts. Rails booting but the engine
+    # failing to mount also answers HTTP requests (with an HTML 404), so a
+    # response alone is not enough evidence — it must look like the engine,
+    # not just like a webserver.
     def wait_for_boot!
       Timeout.timeout(BOOT_TIMEOUT) do
         loop do
           begin
-            Net::HTTP.post(URI(mcp_url), "{}", "Content-Type" => "application/json")
-            return
-          rescue Errno::ECONNREFUSED, Errno::ECONNRESET, EOFError
+            response = Net::HTTP.post(URI(mcp_url), "{}", "Content-Type" => "application/json")
+            return if engine_response?(response)
+
+            sleep 0.5
+          rescue Errno::ECONNREFUSED, Errno::ECONNRESET, Errno::ETIMEDOUT, EOFError, SocketError
             sleep 0.5
           end
         end
       end
     rescue Timeout::Error
       raise BootError, "Server did not boot within #{BOOT_TIMEOUT}s. Log tail:\n\n#{log_tail}"
+    end
+
+    def engine_response?(response)
+      return true if response.code == "401"
+
+      response.code == "200" && response["Content-Type"].to_s.include?("application/json")
     end
 
     def log_tail

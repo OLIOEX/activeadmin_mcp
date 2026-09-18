@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "bundler"
 require "digest"
 require "fileutils"
 require "open3"
@@ -58,13 +59,22 @@ module E2E
     end
 
     def build!
-      return APP_PATH if cached?
+      if cached?
+        # The bundle lives inside the cached directory (vendor/bundle), but a
+        # cache restore does not guarantee it is satisfied for this machine,
+        # and seed data may have been mutated by the previous run's `update`
+        # examples. Both are cheap to redo when already correct.
+        bundle_install
+        seed
+        return APP_PATH
+      end
 
       FileUtils.rm_rf(APP_PATH)
       FileUtils.mkdir_p(File.dirname(APP_PATH))
 
       generate_app
       write_gemfile
+      vendor_bundle_path
       bundle_install
       install_active_admin
       generate_fixture_models
@@ -134,6 +144,15 @@ module E2E
         f.puts
         f.puts GEMFILE_ADDITIONS.gsub("GEM_PATH", REPO_ROOT)
       end
+    end
+
+    # Vendors the generated app's gems inside APP_PATH itself, rather than the
+    # system gem home, so that caching tmp/e2e_app (as CI does) actually
+    # caches a runnable app. Without this, Bundler.with_unbundled_env strips
+    # BUNDLE_* and the gems installed by `bundle_install` land outside
+    # whatever directory gets cached.
+    def vendor_bundle_path
+      run!(["bundle", "config", "set", "--local", "path", "vendor/bundle"])
     end
 
     def bundle_install
@@ -224,27 +243,40 @@ module E2E
       run!(["bin/rails", "runner", SEED_SCRIPT])
     end
 
+    # Restorative rather than create-only: this runs on every suite run
+    # (cached or not), so it must reset any row the `update` examples
+    # mutated (e.g. the small-gods post's title) back to its seeded values,
+    # not just create the row if missing. Records are looked up by slug
+    # (posts) or email (authors/admin user) so ids and slugs stay stable
+    # across runs, which the `update` examples rely on.
     SEED_SCRIPT = <<~RUBY
-      AdminUser.find_or_create_by!(email: "#{ADMIN_EMAIL}") do |user|
-        user.password = "#{ADMIN_PASSWORD}"
-        user.password_confirmation = "#{ADMIN_PASSWORD}"
-      end
+      user = AdminUser.find_or_initialize_by(email: "#{ADMIN_EMAIL}")
+      user.password = "#{ADMIN_PASSWORD}"
+      user.password_confirmation = "#{ADMIN_PASSWORD}"
+      user.save!
 
-      Author.find_or_create_by!(email: "ursula@example.com") { |a| a.name = "Ursula" }
-      Author.find_or_create_by!(email: "terry@example.com") { |a| a.name = "Terry" }
+      ursula = Author.find_or_initialize_by(email: "ursula@example.com")
+      ursula.name = "Ursula"
+      ursula.save!
 
-      Post.find_or_create_by!(slug: "a-wizard-of-earthsea") do |p|
-        p.title = "A Wizard of Earthsea"
-        p.body = "The first."
-      end
-      Post.find_or_create_by!(slug: "the-tombs-of-atuan") do |p|
-        p.title = "The Tombs of Atuan"
-        p.body = "The second."
-      end
-      Post.find_or_create_by!(slug: "small-gods") do |p|
-        p.title = "Small Gods"
-        p.body = "Unrelated."
-      end
+      terry = Author.find_or_initialize_by(email: "terry@example.com")
+      terry.name = "Terry"
+      terry.save!
+
+      earthsea = Post.find_or_initialize_by(slug: "a-wizard-of-earthsea")
+      earthsea.title = "A Wizard of Earthsea"
+      earthsea.body = "The first."
+      earthsea.save!
+
+      atuan = Post.find_or_initialize_by(slug: "the-tombs-of-atuan")
+      atuan.title = "The Tombs of Atuan"
+      atuan.body = "The second."
+      atuan.save!
+
+      small_gods = Post.find_or_initialize_by(slug: "small-gods")
+      small_gods.title = "Small Gods"
+      small_gods.body = "Unrelated."
+      small_gods.save!
     RUBY
   end
 end

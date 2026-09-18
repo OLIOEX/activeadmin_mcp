@@ -41,7 +41,17 @@ RSpec.describe "the MCP tools" do
       result = client.call_tool("query", resource: "Post", limit: 1)
 
       expect(result["count"]).to eq(1)
+      expect(result["records"].length).to eq(1)
     end
+
+    # No example asserts the documented 100-record cap (README: "capped at
+    # 100"). With only three Posts seeded, any assertion on the result of a
+    # limit above 100 (count, records.length, or absence of an error) would
+    # be identical whether the clamp fired or not, so it would pass whether
+    # or not the clamp exists - see the final-fix-report for the fuller
+    # reasoning. Demonstrating the clamp for real needs >100 seeded records,
+    # which is a real cost (seed script size, migrate/seed time on every
+    # run) we're not paying just for this.
 
     it "reports an unregistered resource rather than raising" do
       result = client.call_tool("query", resource: "Nonexistent")
