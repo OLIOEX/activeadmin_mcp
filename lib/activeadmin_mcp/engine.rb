@@ -14,5 +14,11 @@ module ActiveadminMcp
         end
       end
     end
+
+    initializer "activeadmin_mcp.active_admin_ext" do
+      ActiveSupport.on_load(:after_initialize) do
+        ActiveAdmin.after_load { ActiveadminMcp::ActiveAdminExt.apply! } if defined?(::ActiveAdmin)
+      end
+    end
   end
 end

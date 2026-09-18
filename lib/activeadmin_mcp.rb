@@ -1,6 +1,7 @@
 require_relative "activeadmin_mcp/version"
 require_relative "activeadmin_mcp/configuration"
 require_relative "activeadmin_mcp/authorization"
+require_relative "activeadmin_mcp/active_admin_ext"
 require_relative "activeadmin_mcp/resource_registry"
 require_relative "activeadmin_mcp/form_field_collector"
 require_relative "activeadmin_mcp/record_updater"
