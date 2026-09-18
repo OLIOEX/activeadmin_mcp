@@ -89,6 +89,7 @@ ActiveAdmin.register Volunteer do
 
   batch_action :suspend, form: { reason: :text },
                          mcp: { description: "Suspend the selected volunteers" } do |ids, inputs|
+    Volunteer.where(id: ids).update_all(name: "Suspended: #{inputs[:reason]}")
     redirect_to collection_path, notice: "#{ids.size} suspended: #{inputs[:reason]}"
   end
 end
