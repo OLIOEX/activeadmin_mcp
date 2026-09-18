@@ -8,6 +8,8 @@ module ActiveadminMcp
   # is the contract, and forwarding unknown keys into a controller action would
   # let a client reach parameters the application never opted in to.
   class ActionParams
+    class CoercionError < StandardError; end
+
     def initialize(definition)
       @definition = definition
     end
@@ -38,11 +40,17 @@ module ActiveadminMcp
           next
         end
 
-        if spec[:enum].is_a?(Array) && !spec[:enum].include?(value)
+        begin
+          coerced_value = coerce(value, spec[:type])
+        rescue CoercionError
+          return { error: "#{name} must be a #{spec[:type]}" }
+        end
+
+        if spec[:enum].is_a?(Array) && !spec[:enum].include?(coerced_value)
           return { error: "#{name} must be one of: #{spec[:enum].join(', ')}" }
         end
 
-        result[:params][name] = coerce(value, spec[:type])
+        result[:params][name] = coerced_value
       end
 
       result
@@ -52,13 +60,21 @@ module ActiveadminMcp
 
     def coerce(value, type)
       case type&.to_sym
-      when :integer then Integer(value)
-      when :number then Float(value)
-      when :boolean then [true, "true", "1", 1].include?(value)
-      else value
+      when :integer
+        Integer(value)
+      when :number
+        Float(value)
+      when :boolean
+        case value
+        when true, "true", "1", 1 then true
+        when false, "false", "0", 0 then false
+        else raise CoercionError, "invalid boolean value"
+        end
+      else
+        value
       end
-    rescue ArgumentError, TypeError
-      value
+    rescue ArgumentError, TypeError => e
+      raise CoercionError, e.message
     end
   end
 end

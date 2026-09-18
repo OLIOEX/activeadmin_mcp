@@ -64,4 +64,53 @@ RSpec.describe ActiveadminMcp::ActionParams do
 
     expect(result[:params]).to eq(reason: "Late")
   end
+
+  it "coerces a value before checking enum (Finding 1: string '1' should match integer enum [1, 2, 3])" do
+    definition = definition(kind: :collection, params: { count: { type: :integer, enum: [1, 2, 3] } })
+
+    result = call(definition, { "count" => "1" })
+
+    expect(result[:params]).to eq(count: 1)
+  end
+
+  it "refuses a coerced value outside enum" do
+    definition = definition(kind: :collection, params: { count: { type: :integer, enum: [1, 2, 3] } })
+
+    result = call(definition, { "count" => "9" })
+
+    expect(result[:error]).to eq("count must be one of: 1, 2, 3")
+  end
+
+  it "refuses a value that cannot be coerced to integer (Finding 2: 'abc' for :integer)" do
+    definition = definition(kind: :collection, params: { count: { type: :integer } })
+
+    result = call(definition, { "count" => "abc" })
+
+    expect(result[:error]).to eq("count must be a integer")
+  end
+
+  it "coerces the string 'false' to boolean false" do
+    definition = definition(kind: :collection, params: { active: { type: :boolean } })
+
+    result = call(definition, { "active" => "false" })
+
+    expect(result[:params]).to eq(active: false)
+  end
+
+  it "refuses a value that cannot be coerced to boolean" do
+    definition = definition(kind: :collection, params: { active: { type: :boolean } })
+
+    result = call(definition, { "active" => "wibble" })
+
+    expect(result[:error]).to eq("active must be a boolean")
+  end
+
+  it "accepts a required boolean param sent as false (not treated as missing)" do
+    definition = definition(kind: :collection, params: { active: { type: :boolean, required: true } })
+
+    result = call(definition, { "active" => false })
+
+    expect(result[:params]).to eq(active: false)
+    expect(result).not_to have_key(:error)
+  end
 end
