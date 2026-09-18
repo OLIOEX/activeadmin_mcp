@@ -1,0 +1,14 @@
+{
+  "name": "activeadmin-mcp-mcpb",
+  "version": "0.0.3",
+  "private": true,
+  "description": "Claude Desktop bundle bridging stdio to an activeadmin_mcp HTTP server",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "test": "node --test"
+  }
+}

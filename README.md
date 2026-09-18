@@ -203,6 +203,84 @@ end
 }
 ```
 
+## Claude Desktop (MCPB bundle)
+
+Claude Code talks to the server over HTTP directly, but **Claude Desktop** cannot:
+its remote connector UI has no way to send an API token header. The `mcpb/`
+directory solves this with an
+[MCP bundle](https://claude.com/docs/connectors/building/mcpb) — a `.mcpb` file
+your colleagues install with a double-click.
+
+Inside the bundle is a small Node script that speaks stdio to Claude Desktop and
+forwards every message, unchanged, to your server over HTTPS with the token
+attached. It has no dependencies and adds no capabilities of its own, so the
+tools it exposes are exactly the ones your server exposes.
+
+```
+Claude Desktop  ──stdio──▶  mcpb proxy  ──HTTPS + token──▶  your Rails app
+```
+
+### Building the bundle
+
+Requires Node 18 or newer. From the repository root:
+
+```bash
+cd mcpb
+npm test                                   # no dependencies to install
+npx @anthropic-ai/mcpb pack . ../activeadmin-mcp.mcpb
+```
+
+That writes `activeadmin-mcp.mcpb` (a zip of `manifest.json`, `package.json` and
+`server/index.js`) to the repository root, ready to distribute. Bump `version`
+in **both** `mcpb/manifest.json` and `mcpb/package.json` before packing a
+release — Claude Desktop uses the manifest version to detect upgrades.
+
+CI packs the bundle on every push and attaches it as a build artifact, so you
+can also download a build from the Actions tab rather than packing it yourself.
+
+Distribute the file however suits you: an internal file share, a GitHub release
+asset, or an S3 bucket. Anyone with the file can install it, but it is inert
+without a token.
+
+### Installing
+
+1. **Generate a token.** Sign in to your admin panel, go to **MCP Tokens**, name
+   the token after the machine you are installing on (e.g. "Claude Desktop —
+   work laptop") and copy it. It is shown only once.
+2. **Install the bundle.** Double-click the `.mcpb` file, or drag it onto the
+   Claude Desktop window, or use **Settings → Extensions → Advanced settings →
+   Install Extension…**.
+3. **Fill in the three settings** Claude Desktop prompts for:
+
+   | Setting | Value |
+   |---------|-------|
+   | Server URL | The full MCP endpoint, e.g. `https://admin.example.com/admin/mcp` |
+   | API token | The token from step 1 (stored in the OS keychain, never shown again) |
+   | Authentication header | `Authorization`, unless your app sets a custom [`auth_header_name`](#custom-auth-header) |
+
+4. **Check it works.** Start a new chat and ask Claude to list the admin
+   resources it can see. You should get back the resources your account can read.
+
+Installation is per-person: each colleague installs the bundle and generates
+their own token, so every MCP call is attributed to them and constrained by
+their own admin permissions.
+
+### Revoking access
+
+A token is a long-lived credential granting everything that user can do in
+admin. Revoke one from the same **MCP Tokens** page — the `Last used` column
+shows which tokens are still live. Revoking takes effect immediately; the
+installed bundle simply starts reporting an authentication failure.
+
+### Troubleshooting
+
+| Symptom | Cause |
+|---------|-------|
+| "The server rejected the API token (HTTP 401)" | The token is wrong, revoked, or being sent in the wrong header. Check the **Authentication header** setting matches your `auth_header_name`. |
+| "Could not reach …" | The URL is wrong or unreachable from this machine — check VPN, and that the URL includes the full mount path. |
+| The extension shows no tools | Claude Desktop only refreshes tools on connect. Toggle the extension off and on in Settings → Extensions. |
+| Anything else | Claude Desktop's extension logs carry the proxy's stderr output, each line prefixed `[activeadmin_mcp]`. |
+
 ## Configuration
 
 The generator writes an initializer to
