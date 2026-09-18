@@ -9,7 +9,13 @@ require "active_record"
 require "action_controller/railtie"
 require "active_model/railtie"
 
-ActiveRecord::Base.establish_connection(adapter: "sqlite3", database: ":memory:")
+# Shared-cache URI, not a bare ":memory:" database — see the comment in
+# spec/support/active_record.rb for why: two anonymous in-memory databases
+# would fight over ActiveRecord::Base's single connection pool depending on
+# spec load order, stranding whichever support file's tables loaded first.
+ActiveRecord::Base.establish_connection(
+  adapter: "sqlite3", database: "file:activeadmin_mcp_test?mode=memory&cache=shared"
+)
 ActiveRecord::Schema.verbose = false
 ActiveRecord::Schema.define do
   create_table :volunteers, force: true do |t|

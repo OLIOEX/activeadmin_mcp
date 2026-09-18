@@ -2,6 +2,19 @@ require "rails"
 require "active_record"
 require "action_controller"
 require "activeadmin_mcp"
+require "sqlite3"
+
+# spec/support/active_admin.rb and spec/support/active_record.rb each define
+# their own tables against a shared in-memory SQLite database (see the
+# comments in those files for why it must be shared rather than two separate
+# ":memory:" databases). A SQLite shared-cache database is destroyed the
+# moment its last connection closes, and ActiveRecord::Base.establish_connection
+# closes whatever pool it replaces — so without a connection held open
+# independently of ActiveRecord for the life of the process, the database
+# (and every table in it) would vanish the first time either support file's
+# pool got replaced. This constant just keeps one connection open so that
+# never happens.
+KEEPALIVE_SQLITE_CONNECTION = SQLite3::Database.new("file:activeadmin_mcp_test?mode=memory&cache=shared")
 
 RSpec.configure do |config|
   config.expect_with :rspec do |expectations|
