@@ -21,7 +21,7 @@ module ActiveadminMcp
         required << name.to_s if spec[:required]
       end
 
-      { type: "object", properties: properties, required: required }
+      { type: "object", properties: properties, required: required.uniq }
     end
 
     private

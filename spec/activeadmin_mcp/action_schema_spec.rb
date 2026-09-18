@@ -64,4 +64,14 @@ RSpec.describe ActiveadminMcp::ActionSchema do
 
     expect(schema[:properties][:category]).to eq(type: "string")
   end
+
+  it "ensures no duplicate required entries even if a colliding param somehow reaches it" do
+    # ActionDefinition rejects this upstream, but to_h should never emit duplicates regardless
+    schema = described_class.new(
+      definition(kind: :member, params: { id: { type: :integer, required: true } })
+    ).to_h
+
+    expect(schema[:required]).to eq(["id"])
+    expect(schema[:required].uniq).to eq(schema[:required])
+  end
 end

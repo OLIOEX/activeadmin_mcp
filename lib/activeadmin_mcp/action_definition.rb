@@ -105,17 +105,31 @@ module ActiveadminMcp
       @errors << "#{tool_name}: mcp declaration needs a description" if description.to_s.strip.empty?
       @errors << "#{tool_name}: unknown kind #{@kind}" unless KINDS.include?(@kind)
 
+      reserved = reserved_param_name
       params.each do |name, spec|
         unless spec.is_a?(Hash)
           @errors << "#{tool_name}: param #{name} must be a Hash"
           next
         end
 
+        @errors << "#{tool_name}: param #{name} is reserved" if name == reserved
+
         type = spec[:type]
         @errors << "#{tool_name}: param #{name} has unknown type #{type}" if type && !TYPES.include?(type.to_sym)
       end
 
       @errors << "#{tool_name}: permission must be callable" if permission && !permission.respond_to?(:call)
+    end
+
+    def reserved_param_name
+      case @kind
+      when :member
+        :id
+      when :batch
+        :ids
+      else
+        nil
+      end
     end
   end
 end

@@ -108,4 +108,50 @@ RSpec.describe ActiveadminMcp::ActionDefinition do
     expect(definition).not_to be_valid
     expect(definition.errors.first).to include("description")
   end
+
+  it "is invalid when a member action declares a param named id" do
+    action = member_action(:create_warning, mcp: {
+      description: "Record a warning",
+      params: { id: { type: :integer } }
+    })
+
+    definition = described_class.build(config: build_config, action: action, kind: :member)
+
+    expect(definition).not_to be_valid
+    expect(definition.errors).to include(match(/param id is reserved/))
+  end
+
+  it "is invalid when a batch action declares a param named ids" do
+    action = batch_action(:suspend, mcp: {
+      description: "Suspend",
+      params: { ids: { type: :array } }
+    })
+
+    definition = described_class.build(config: build_config, action: action, kind: :batch)
+
+    expect(definition).not_to be_valid
+    expect(definition.errors).to include(match(/param ids is reserved/))
+  end
+
+  it "is valid when a collection action declares a param named id" do
+    action = double("controller_action", name: :process, http_verb: :post, mcp_options: {
+      description: "Process something",
+      params: { id: { type: :string } }
+    })
+
+    definition = described_class.build(config: build_config, action: action, kind: :collection)
+
+    expect(definition).to be_valid
+  end
+
+  it "is valid when a member action declares a param named ids" do
+    action = member_action(:create_warning, mcp: {
+      description: "Record a warning",
+      params: { ids: { type: :array } }
+    })
+
+    definition = described_class.build(config: build_config, action: action, kind: :member)
+
+    expect(definition).to be_valid
+  end
 end
