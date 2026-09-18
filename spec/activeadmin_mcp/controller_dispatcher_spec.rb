@@ -3,10 +3,24 @@
 require "spec_helper"
 require "support/active_admin"
 
+# An authorization adapter that denies everything, used to prove that
+# neutralising the namespace's authentication_method (see build_controller)
+# does not also neutralise authorization, which must keep running in full.
+class DenyingAuthorizationAdapter < ActiveAdmin::AuthorizationAdapter
+  def authorized?(_action, _subject = nil)
+    false
+  end
+end
+
 RSpec.describe ActiveadminMcp::ControllerDispatcher do
   let(:config) { McpSpec::ActiveAdminHarness.volunteer_config }
   let(:admin) { AdminUser.create!(email: "admin@example.com") }
   let(:volunteer) { Volunteer.create!(name: "Ann") }
+
+  after do
+    Volunteer.delete_all
+    AdminUser.delete_all
+  end
 
   def dispatch(action:, params: {}, path: nil, path_params: {})
     described_class.new(config: config, current_user: admin).call(
@@ -71,6 +85,31 @@ RSpec.describe ActiveadminMcp::ControllerDispatcher do
 
       expect(result[:redirect_to]).to include("/admin/volunteers/#{volunteer.id}")
       expect(volunteer.reload.name).to eq("Late again")
+    end
+  end
+
+  context "when the authorization adapter denies the action" do
+    around do |example|
+      namespace = ActiveAdmin.application.namespaces[:admin]
+      previous = namespace.authorization_adapter
+      namespace.authorization_adapter = DenyingAuthorizationAdapter
+      example.run
+      namespace.authorization_adapter = previous
+    end
+
+    it "blocks the action instead of running it" do
+      result = dispatch(action: :create_warning, params: { reason: "Late again" })
+
+      # ActiveAdmin's default on_unauthorized_access handler rescues
+      # ActiveAdmin::AccessDenied internally and turns it into a redirect
+      # with a flash message, rather than letting the exception reach
+      # ControllerDispatcher's own rescue — so the denial surfaces as a
+      # flash entry, not a top-level :error key. What actually matters is
+      # proven below: the write never happened.
+      expect(result).not_to have_key(:error)
+      expect(result[:flash]&.values&.join).to match(/not authorized/i)
+
+      expect(volunteer.reload.name).to eq("Ann")
     end
   end
 end
