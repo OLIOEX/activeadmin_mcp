@@ -142,6 +142,11 @@ end
   never enforced, so use it for live values from the database. If it raises,
   the tool is still listed without suggestions.
 
+On a batch action, every declared param must also appear in the action's `form:`
+hash. ActiveAdmin slices submitted inputs down to the declared `form:` keys
+before calling the block, so a param declared only under `mcp:` would be
+advertised to the client and then dropped; the declaration is refused instead.
+
 **Authorization**
 
 `permission:` is an *additional* gate, never a replacement. Every call first
@@ -150,6 +155,28 @@ do; the proc can only narrow access further, never widen it. It is evaluated in
 controller context, so `current_admin_user`, `can?` and the usual admin helpers
 are available. Return `false` to refuse, or a `String` to refuse with a reason
 the agent can act on.
+
+Tools are also listed per user: an action whose resource the adapter refuses is
+left out of `tools/list` entirely, and a `permission:` proc that takes no
+arguments is evaluated at listing time (in the same controller context) so the
+tool is hidden rather than offered and then refused.
+
+For **batch actions** the adapter check is necessarily resource-level — there is
+no single record to authorize — so it is `authorized?(:<action>, YourModel)`
+rather than a per-record policy evaluation. To stop that being a hole, the ids
+the client submits are run back through the adapter's `scope_collection`, and
+the whole call is refused if any of them falls outside the scope. Nothing is
+narrowed silently: the call either acts on every id you asked for or on none.
+
+One caveat on authentication. Dispatch neutralises the namespace's
+`authentication_method` callback, because the MCP request has already
+authenticated by bearer token and that callback would otherwise redirect to a
+login page. If your `authentication_method` is a *combined* authentication-and-
+authorization method — one that also, say, rejects non-superusers — then
+neutralising it disables that authorization half too. Resource-level
+authorization still runs through the adapter, but the "we only skip
+authentication" framing is not universal; keep authorization in the adapter,
+not in the authentication callback.
 
 **What you get back**
 
