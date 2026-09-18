@@ -38,45 +38,74 @@ module ActiveadminMcp
     end
 
     def tools_list
-      {
-        tools: [
-          {
-            name: "list_resources",
-            description: "List the ActiveAdmin resources the authenticated user is authorized " \
-                         "to read, with their attributes",
-            inputSchema: { type: "object", properties: {} },
-          },
-          {
-            name: "query",
-            description: "Query an ActiveAdmin resource using Ransack syntax. Respects ActiveAdmin " \
-                         "authorization: the resource must be readable by the authenticated user, " \
-                         "and results are scoped to the records they may access.",
-            inputSchema: {
-              type: "object",
-              properties: {
-                resource: { type: "string", description: "Resource name (e.g., 'User', 'Post')" },
-                q: { type: "object", description: "Ransack query (e.g., {name_cont: 'john'})" },
-                limit: { type: "integer", description: "Max records (default: 25)" },
-              },
-              required: ["resource"],
+      { tools: built_in_tools + action_tools }
+    end
+
+    def action_tools
+      ActionCatalog.all.filter_map do |definition|
+        next unless authorized_to_list?(definition)
+
+        {
+          name: definition.tool_name,
+          description: definition.description,
+          inputSchema: ActionSchema.new(definition).to_h,
+        }
+      end
+    end
+
+    # Collection and batch actions whose permission proc takes no record can be
+    # resolved now, so the tool is simply hidden. A member action's proc needs a
+    # record, so its tool stays listed and refusal happens at call time.
+    def authorized_to_list?(definition)
+      permission = definition.permission
+      return true unless permission
+      return true unless permission.respond_to?(:arity) && permission.arity.zero?
+
+      begin
+        !!permission.call
+      rescue StandardError
+        false
+      end
+    end
+
+    def built_in_tools
+      [
+        {
+          name: "list_resources",
+          description: "List the ActiveAdmin resources the authenticated user is authorized " \
+                       "to read, with their attributes",
+          inputSchema: { type: "object", properties: {} },
+        },
+        {
+          name: "query",
+          description: "Query an ActiveAdmin resource using Ransack syntax. Respects ActiveAdmin " \
+                       "authorization: the resource must be readable by the authenticated user, " \
+                       "and results are scoped to the records they may access.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              resource: { type: "string", description: "Resource name (e.g., 'User', 'Post')" },
+              q: { type: "object", description: "Ransack query (e.g., {name_cont: 'john'})" },
+              limit: { type: "integer", description: "Max records (default: 25)" },
             },
+            required: ["resource"],
           },
-          {
-            name: "update",
-            description: "Update an existing record. Only fields the resource's ActiveAdmin " \
-                         "form permits are written, and the update respects ActiveAdmin authorization.",
-            inputSchema: {
-              type: "object",
-              properties: {
-                resource: { type: "string", description: "Resource name (e.g., 'User', 'Post')" },
-                id: { type: ["integer", "string"], description: "Primary key of the record to update" },
-                attributes: { type: "object", description: "Attributes to update (e.g., {name: 'New name'})" },
-              },
-              required: %w[resource id attributes],
+        },
+        {
+          name: "update",
+          description: "Update an existing record. Only fields the resource's ActiveAdmin " \
+                       "form permits are written, and the update respects ActiveAdmin authorization.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              resource: { type: "string", description: "Resource name (e.g., 'User', 'Post')" },
+              id: { type: ["integer", "string"], description: "Primary key of the record to update" },
+              attributes: { type: "object", description: "Attributes to update (e.g., {name: 'New name'})" },
             },
+            required: %w[resource id attributes],
           },
-        ],
-      }
+        },
+      ]
     end
 
     def call_tool(params)
@@ -87,10 +116,17 @@ module ActiveadminMcp
                when "list_resources" then tool_list_resources
                when "query" then tool_query(args)
                when "update" then tool_update(args)
-               else { error: "Unknown tool: #{name}" }
+               else tool_action(name, args)
                end
 
       { content: [{ type: "text", text: JSON.pretty_generate(result) }] }
+    end
+
+    def tool_action(name, args)
+      definition = ActionCatalog.find(name)
+      return { error: "Unknown tool: #{name}" } unless definition
+
+      ActionRunner.new(definition: definition, current_user: @current_user).call(args)
     end
 
     def tool_list_resources

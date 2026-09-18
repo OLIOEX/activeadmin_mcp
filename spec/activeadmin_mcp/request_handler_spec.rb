@@ -40,6 +40,8 @@ RSpec.describe ActiveadminMcp::RequestHandler do
     end
 
     describe "tools/list" do
+      before { allow(ActiveadminMcp::ActionCatalog).to receive(:all).and_return([]) }
+
       it "advertises the list_resources, query and update tools" do
         tools = handle("tools/list")[:result][:tools]
 
@@ -233,6 +235,67 @@ RSpec.describe ActiveadminMcp::RequestHandler do
       it "returns an error naming the tool" do
         expect(call_tool("frobnicate")).to eq("error" => "Unknown tool: frobnicate")
       end
+    end
+  end
+
+  describe "action tools" do
+    def definition(tool_name: "volunteer_create_warning", permission: nil)
+      double(
+        "definition",
+        tool_name: tool_name,
+        description: "Record a warning",
+        kind: :member,
+        params: { reason: { type: :string, required: true } },
+        permission: permission,
+        resource_name: "Volunteer",
+        config: double("config")
+      )
+    end
+
+    def handle(request, current_user: :admin)
+      ActiveadminMcp::RequestHandler.new(current_user: current_user).handle(request)
+    end
+
+    it "lists opted-in actions alongside the built-in tools" do
+      allow(ActiveadminMcp::ActionCatalog).to receive(:all).and_return([definition])
+      allow(ActiveadminMcp::ResourceRegistry).to receive(:resources).and_return([])
+
+      response = handle({ "id" => 1, "method" => "tools/list" })
+      names = response[:result][:tools].map { |tool| tool[:name] }
+
+      expect(names).to include("volunteer_create_warning")
+      tool = response[:result][:tools].find { |t| t[:name] == "volunteer_create_warning" }
+      expect(tool[:description]).to eq("Record a warning")
+      expect(tool[:inputSchema][:required]).to include("id", "reason")
+    end
+
+    it "routes a call to the action runner" do
+      target = definition
+      allow(ActiveadminMcp::ActionCatalog).to receive(:find).with("volunteer_create_warning").and_return(target)
+
+      runner = instance_double(ActiveadminMcp::ActionRunner, call: { status: 302 })
+      allow(ActiveadminMcp::ActionRunner).to receive(:new)
+        .with(definition: target, current_user: :admin).and_return(runner)
+
+      response = handle({
+        "id" => 2, "method" => "tools/call",
+        "params" => { "name" => "volunteer_create_warning",
+                      "arguments" => { "id" => "1", "reason" => "Late" } }
+      })
+
+      expect(runner).to have_received(:call).with({ "id" => "1", "reason" => "Late" })
+      expect(response[:result][:content].first[:text]).to include("302")
+    end
+
+    it "reports an unknown tool" do
+      allow(ActiveadminMcp::ActionCatalog).to receive(:find).and_return(nil)
+
+      response = handle({
+        "id" => 3, "method" => "tools/call",
+        "params" => { "name" => "nope", "arguments" => {} }
+      })
+
+      expect(response[:result][:content].first[:text]).to include("Unknown tool")
     end
   end
 end

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- ActiveAdmin `member_action`, `collection_action` and `batch_action`
+  definitions can be exposed as MCP tools by adding an `mcp:` option to them.
+  Actions are opt-in: nothing is exposed without that option. Execution runs
+  through the real ActiveAdmin controller, so `before_action` chains,
+  authorization and callbacks all apply, and an optional `permission:` proc can
+  narrow access further.
+
 ### Changed
 
 - **Breaking:** the minimum supported Ruby is now 4.0 and the minimum Rails is
