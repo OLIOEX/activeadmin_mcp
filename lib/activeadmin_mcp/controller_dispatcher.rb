@@ -17,7 +17,7 @@ module ActiveadminMcp
     end
 
     def call(action:, path:, verb: :get, params: {}, path_params: {})
-      controller = build_controller
+      controller = controller_with_mcp_user
       request = build_request(path: path, verb: verb, params: params, action: action, path_params: path_params)
       response = ActionDispatch::Response.new
 
@@ -27,17 +27,24 @@ module ActiveadminMcp
 
       capture(request, response)
     rescue StandardError => e
-      { error: "#{@config.resource_class.name}##{action} failed: #{e.message}" }
+      # The exception text can carry internals — SQL fragments, table names,
+      # file paths. It belongs in the application's log, not in a tool result
+      # that goes to an MCP client.
+      warn("[activeadmin_mcp] #{@config.resource_class.name}##{action} raised #{e.class}: #{e.message}")
+      { error: "#{@config.resource_class.name}##{action} failed" }
     end
 
-    private
-
-    def build_controller
+    # A controller instance for this resource with the MCP user injected, ready
+    # either to process a request or to serve as the evaluation context for an
+    # action's `permission:` proc. Public because listing-time permission checks
+    # need exactly the same context a dispatched call gets.
+    def controller_with_mcp_user
       user = @current_user
       controller = @config.controller.new
 
-      controller.define_singleton_method(ActiveadminMcp.config.current_user_method) { user }
-      controller.define_singleton_method(:current_active_admin_user) { user }
+      current_user_methods.each do |method_name|
+        controller.define_singleton_method(method_name) { user }
+      end
 
       # The namespace's authentication_method (typically Devise's
       # authenticate_admin_user!) would redirect us to a login page. The MCP
@@ -47,6 +54,22 @@ module ActiveadminMcp
       controller.define_singleton_method(auth_method) { true } if auth_method
 
       controller
+    end
+
+    private
+
+    # An application can point ActiveadminMcp at one current-user method and the
+    # ActiveAdmin namespace at another. Stub both, so an action body calling
+    # either gets the MCP user rather than nil. uniq keeps us from defining the
+    # same singleton method twice when they agree.
+    def current_user_methods
+      namespace_method = @config.namespace.current_user_method if @config.namespace.respond_to?(:current_user_method)
+
+      [
+        ActiveadminMcp.config.current_user_method,
+        namespace_method,
+        :current_active_admin_user,
+      ].select { |name| name.respond_to?(:to_sym) }.map(&:to_sym).uniq
     end
 
     def build_request(path:, verb:, params:, action:, path_params:)

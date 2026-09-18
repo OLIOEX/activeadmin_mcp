@@ -3,6 +3,20 @@
 require "spec_helper"
 require "support/active_admin"
 
+# Authorizes every action at the class level but scopes collections down to
+# active records, the shape a real CanCanCan or Pundit adapter has: gate 1
+# passes for a batch action (its subject is the resource class), and only
+# scope_collection knows which records are actually reachable.
+class ActiveOnlyAuthorizationAdapter < ActiveAdmin::AuthorizationAdapter
+  def authorized?(_action, _subject = nil)
+    true
+  end
+
+  def scope_collection(collection, _action = :read)
+    collection.where(active: true)
+  end
+end
+
 RSpec.describe ActiveadminMcp::ActionRunner do
   let(:config) { McpSpec::ActiveAdminHarness.volunteer_config }
   let(:admin) { AdminUser.create!(email: "admin@example.com") }
@@ -77,6 +91,19 @@ RSpec.describe ActiveadminMcp::ActionRunner do
     expect(result[:error]).to eq("Volunteer is suspended")
   end
 
+  it "keeps a raising permission proc's message out of the refusal" do
+    allow(definition).to receive(:permission).and_return(
+      ->(_record) { raise "SQLite3::SQLException: no such table: nope_secret" }
+    )
+    messages = []
+    allow_any_instance_of(described_class).to receive(:warn) { |_, message| messages << message }
+
+    result = run(definition, { "id" => volunteer.id.to_s, "reason" => "Late" })
+
+    expect(result[:error]).to eq("Permission check failed for volunteer_create_warning")
+    expect(messages.join).to include("nope_secret")
+  end
+
   it "runs the permission proc in controller context" do
     seen = nil
     allow(definition).to receive(:permission).and_return(proc { |record| seen = [record, current_active_admin_user]; true })
@@ -127,6 +154,46 @@ RSpec.describe ActiveadminMcp::ActionRunner do
       result = run(collection_definition, {})
 
       expect(result[:error]).to eq("Exports are disabled")
+    end
+  end
+
+  # Gate 1 can only authorize the resource class for a batch action, so without
+  # an explicit id-scope check a client could name records the adapter excludes
+  # and ActiveAdmin would happily mutate them.
+  describe "batch ids outside the authorized scope" do
+    around do |example|
+      namespace = ActiveAdmin.application.namespaces[:admin]
+      previous = namespace.authorization_adapter
+      namespace.authorization_adapter = ActiveOnlyAuthorizationAdapter
+      example.run
+      namespace.authorization_adapter = previous
+    end
+
+    it "refuses the whole call and mutates nothing when one id is out of scope" do
+      hidden = Volunteer.create!(name: "Hidden", active: false)
+
+      result = run(batch_definition,
+                   { "ids" => [volunteer.id.to_s, hidden.id.to_s], "reason" => "No shows" })
+
+      expect(result[:error]).to include("Not authorized", hidden.id.to_s)
+      expect(volunteer.reload.name).to eq("Ann")
+      expect(hidden.reload.name).to eq("Hidden")
+    end
+
+    it "refuses ids that do not exist at all" do
+      result = run(batch_definition, { "ids" => ["999999"], "reason" => "No shows" })
+
+      expect(result[:error]).to include("999999")
+    end
+
+    it "still runs when every id is inside the scope" do
+      other = Volunteer.create!(name: "Bea")
+
+      result = run(batch_definition,
+                   { "ids" => [volunteer.id.to_s, other.id.to_s], "reason" => "No shows" })
+
+      expect(result[:status]).to eq(302)
+      expect(volunteer.reload.name).to eq("Suspended: No shows")
     end
   end
 end

@@ -9,6 +9,9 @@ module ActiveadminMcp
   #   1. ActiveAdmin's own authorization adapter - the same check `query` and
   #      `update` make today.
   #   2. The action's optional `permission:` proc.
+  #   3. For batch actions only, the submitted ids are run back through the
+  #      adapter's scope_collection, since gate 1 could only authorize the
+  #      resource class.
   #
   # The proc can only ever narrow access. A record the MCP user cannot touch
   # stays untouchable whether or not a proc is declared, and the controller's
@@ -33,6 +36,9 @@ module ActiveadminMcp
 
       refusal = permission_refusal(dispatcher, record, parsed)
       return { error: refusal } if refusal
+
+      out_of_scope = unauthorized_batch_ids(parsed)
+      return { error: out_of_scope } if out_of_scope
 
       dispatcher.call(
         action: dispatch_action,
@@ -67,7 +73,7 @@ module ActiveadminMcp
       permission = @definition.permission
       return nil unless permission
 
-      controller = dispatcher.send(:build_controller)
+      controller = dispatcher.controller_with_mcp_user
       outcome = ::MethodOrProcHelper.render_in_context(controller, permission, *permission_args(permission, record, parsed))
 
       return outcome if outcome.is_a?(String)
@@ -75,7 +81,37 @@ module ActiveadminMcp
 
       "Not permitted to run #{@definition.tool_name}"
     rescue StandardError => e
-      "Permission check failed for #{@definition.tool_name}: #{e.message}"
+      # Keep the detail server-side: the message can carry SQL, paths and other
+      # internals the MCP client has no business seeing.
+      warn("[activeadmin_mcp] permission proc for #{@definition.tool_name} raised #{e.class}: #{e.message}")
+      "Permission check failed for #{@definition.tool_name}"
+    end
+
+    # Gate 1 can only authorize the resource class for a batch action, because
+    # there is no single record. That leaves the submitted ids unchecked, so a
+    # client could name records the adapter's scope_collection excludes. Run the
+    # ids back through the scope and refuse the whole call if any falls outside
+    # it — narrowing silently would let a client believe it acted on records it
+    # never touched.
+    def unauthorized_batch_ids(parsed)
+      return nil unless @definition.kind == :batch
+
+      ids = Array(parsed[:record_ids])
+      return nil if ids.empty?
+
+      klass = @definition.config.resource_class
+      key = klass.primary_key
+      scoped = Authorization.for(@definition.config, @current_user)
+                            .scope_collection(klass.where(key => ids), @definition.action_name)
+      permitted = scoped.pluck(key).map(&:to_s)
+      refused = ids - permitted
+      return nil if refused.empty?
+
+      "Not authorized to run #{@definition.tool_name} on #{@definition.resource_name} " \
+        "#{refused.join(', ')} (not found, or outside your permitted scope)"
+    rescue StandardError => e
+      warn("[activeadmin_mcp] scoping batch ids for #{@definition.tool_name} raised #{e.class}: #{e.message}")
+      "Not authorized to run #{@definition.tool_name}"
     end
 
     # render_in_context instance_execs the proc AND passes args along, so a
