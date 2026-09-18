@@ -20,3 +20,28 @@ jobs:
 
       - name: Run specs
         run: bundle exec rspec
+
+  mcpb:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run proxy tests
+        run: npm test
+        working-directory: mcpb
+
+      - name: Pack the bundle
+        run: npx --yes @anthropic-ai/mcpb pack . ../activeadmin-mcp.mcpb
+        working-directory: mcpb
+
+      - name: Upload the bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: activeadmin-mcp-mcpb
+          path: activeadmin-mcp.mcpb

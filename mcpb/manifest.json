@@ -1,0 +1,64 @@
+{
+  "manifest_version": "0.3",
+  "name": "activeadmin-mcp",
+  "display_name": "ActiveAdmin MCP",
+  "version": "0.0.3",
+  "description": "Query and update your ActiveAdmin data from Claude Desktop.",
+  "long_description": "Connects Claude Desktop to an application running the activeadmin_mcp Rails engine.\n\nThe tools available mirror the ActiveAdmin resources your account can already see: listing resources, querying them with Ransack syntax, and updating records through the same permitted parameters and authorisation rules as the admin UI. Nothing is exposed that you could not do yourself while signed in to the admin panel.\n\nAuthentication uses an API token you generate from the MCP Tokens page in your admin panel, and can be revoked there at any time.",
+  "author": {
+    "name": "OLIO",
+    "url": "https://olioex.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OLIOEX/activeadmin_mcp.git"
+  },
+  "homepage": "https://github.com/OLIOEX/activeadmin_mcp",
+  "documentation": "https://github.com/OLIOEX/activeadmin_mcp#claude-desktop-mcpb-bundle",
+  "support": "https://github.com/OLIOEX/activeadmin_mcp/issues",
+  "license": "MIT",
+  "keywords": ["activeadmin", "rails", "admin", "mcp"],
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/index.js"],
+      "env": {
+        "MCP_SERVER_URL": "${user_config.server_url}",
+        "MCP_API_TOKEN": "${user_config.api_token}",
+        "MCP_AUTH_HEADER": "${user_config.auth_header}"
+      }
+    }
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "claude_desktop": ">=0.10.0",
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "node": ">=18.0.0"
+    }
+  },
+  "user_config": {
+    "server_url": {
+      "type": "string",
+      "title": "Server URL",
+      "description": "Full URL of the MCP endpoint, e.g. https://admin.example.com/admin/mcp",
+      "required": true
+    },
+    "api_token": {
+      "type": "string",
+      "title": "API token",
+      "description": "Generate one from the MCP Tokens page in your admin panel. It is shown only once.",
+      "required": true,
+      "sensitive": true
+    },
+    "auth_header": {
+      "type": "string",
+      "title": "Authentication header",
+      "description": "The header the server reads the token from. Leave as Authorization unless your application sets a custom auth_header_name.",
+      "required": true,
+      "default": "Authorization"
+    }
+  }
+}
