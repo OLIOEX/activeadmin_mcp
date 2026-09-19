@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 require "active_record"
 
 # Spin up an in-memory SQLite database with just the tables the ApiToken

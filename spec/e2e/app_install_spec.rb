@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 RSpec.describe "the generated host application" do
   let(:app_path) { E2E::AppBuilder::APP_PATH }
 

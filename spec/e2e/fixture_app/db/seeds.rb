@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 # Restorative by design: the e2e suite's `update` examples rewrite a post's
 # title, and the generated application is cached between runs, so seeding has
 # to reset existing rows rather than only create missing ones. Records are

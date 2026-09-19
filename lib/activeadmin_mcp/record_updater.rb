@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module ActiveadminMcp
   # Updates a single ActiveAdmin-managed record, enforcing the same three gates
   # the admin UI would: the resource must expose the update action, the current

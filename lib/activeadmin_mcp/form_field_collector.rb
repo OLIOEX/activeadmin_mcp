@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module ActiveadminMcp
   # Records the field names declared by an ActiveAdmin `form do ... end` block.
   #

@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 require_relative "activeadmin_mcp/version"
 require_relative "activeadmin_mcp/configuration"
 require_relative "activeadmin_mcp/authorization"

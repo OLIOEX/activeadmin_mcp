@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module ActiveadminMcp
   class RequestHandler
     PROTOCOL_VERSION = "2025-06-18"

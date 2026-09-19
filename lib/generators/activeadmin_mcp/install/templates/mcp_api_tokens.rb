@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 ActiveAdmin.register_page "MCP API Tokens" do
   menu label: "MCP Tokens", parent: ActiveadminMcp.config.menu_parent, priority: 100
 

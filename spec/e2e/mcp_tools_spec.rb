@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 RSpec.describe "the MCP tools" do
   let(:client) { E2E::McpClient.new(url: E2E::AppServer.instance.mcp_url, token: E2E.token) }
 

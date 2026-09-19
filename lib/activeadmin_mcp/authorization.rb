@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module ActiveadminMcp
   # Applies a resource's ActiveAdmin authorization adapter to MCP tool calls, so
   # reads, listings and writes obey the same rules as the admin UI.

@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 class Post < ApplicationRecord
   # Ransack 4 refuses to filter on any attribute absent from this allowlist,
   # and the MCP `query` tool calls `ransack` directly rather than going
