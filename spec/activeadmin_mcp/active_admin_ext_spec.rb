@@ -27,6 +27,40 @@ RSpec.describe ActiveadminMcp::ActiveAdminExt do
     expect(suspend.mcp_options).to eq(description: "Suspend the selected volunteers")
   end
 
+  # Actions declared in a shared concern cannot carry an mcp: key of their own,
+  # so the resource annotates them by name instead.
+  describe "the mcp_action DSL" do
+    let(:shift_config) do
+      ActiveAdmin.application.namespaces[:admin].resources.find { |r| r.resource_class == Shift }
+    end
+
+    it "records an annotation against the resource for an action declared elsewhere" do
+      expect(shift_config.mcp_annotations).to include(
+        hash_including(
+          action_name: :flag,
+          kind: :batch,
+          options: hash_including(description: "Flag the selected shifts")
+        )
+      )
+    end
+
+    it "records one annotation per declaration, so an action can become more than one tool" do
+      member = shift_config.mcp_annotations.select { |a| a[:kind] == :member }
+
+      expect(member.map { |a| a[:options][:tool_name] }).to eq(%w[shift_flag shift_unflag])
+    end
+
+    it "carries the tool_name and http_verb a declaration chose" do
+      unflag = shift_config.mcp_annotations.find { |a| a[:options][:tool_name] == "shift_unflag" }
+
+      expect(unflag[:options][:http_verb]).to eq(:delete)
+    end
+
+    it "leaves a resource that annotates nothing with no annotations" do
+      expect(McpSpec::ActiveAdminHarness.volunteer_config.mcp_annotations).to eq([])
+    end
+  end
+
   # Guard spec. If a future ActiveAdmin starts validating or stripping unknown
   # option keys, this fails loudly here rather than silently in a user's admin.
   it "confirms ActiveAdmin carries unknown action option keys through untouched" do

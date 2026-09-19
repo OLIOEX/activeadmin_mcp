@@ -133,4 +133,109 @@ RSpec.describe "MCP actions declared with an mcp: option" do
       end
     end
   end
+  # The driving case for mcp_action: actions a shared concern declares, which
+  # cannot carry an mcp: key of their own without describing every resource
+  # that includes the concern identically.
+  describe "an action declared in a shared concern and annotated with mcp_action" do
+    describe "in tools/list" do
+      it "is advertised under the tool name the annotation chose" do
+        expect(tool_names).to include("post_flag", "post_unflag", "post_bulk_flag")
+      end
+
+      it "is not advertised for a resource that includes the same concern but annotates nothing, so exposure stays per resource" do
+        expect(tool_names.grep(/\Areview_/)).to be_empty
+      end
+
+      it "inherits the param types of a batch action whose form: is a proc, by evaluating it as ActiveAdmin does" do
+        properties = tool("post_bulk_flag")["inputSchema"]["properties"]
+
+        expect(properties["reason"]["type"]).to eq("string")
+        expect(properties["notify"]["type"]).to eq("boolean")
+      end
+    end
+
+    describe "when called" do
+      it "runs the member action against the real controller" do
+        client.call_tool("post_flag", id: post_id("small-gods"), reason: "discworld")
+
+        expect(post_status("small-gods")).to eq("flagged:discworld")
+      end
+
+      # Both tools dispatch the same action; only the verb differs, and the
+      # action's own body branches on it. Without the annotation choosing one,
+      # only the first verb ActiveAdmin recorded would ever be reachable.
+      it "dispatches the verb the annotation chose, reaching the other branch of the same action" do
+        client.call_tool("post_unflag", id: post_id("small-gods"))
+
+        expect(post_status("small-gods")).to eq("unflagged")
+      end
+
+      it "runs a collection action the concern declared" do
+        client.call_tool("post_flag", id: post_id("small-gods"), reason: "discworld")
+
+        result = client.call_tool("post_clear_flags")
+
+        expect(result["error"]).to be_nil
+        expect(post_status("small-gods")).to eq("draft")
+      end
+
+      it "tells the batch action of the same name apart from the member one, and applies it to exactly the selected records" do
+        result = client.call_tool(
+          "post_bulk_flag",
+          ids: [post_id("a-wizard-of-earthsea"), post_id("the-tombs-of-atuan")],
+          reason: "earthsea"
+        )
+
+        expect(result["error"]).to be_nil
+        expect(post_status("a-wizard-of-earthsea")).to eq("flagged:earthsea")
+        expect(post_status("the-tombs-of-atuan")).to eq("flagged:earthsea")
+        expect(post_status("small-gods")).to eq("draft")
+      end
+    end
+
+    # ActiveAdmin lets a batch action be titled with a String and derives its
+    # symbol by mangling that title, which leaves punctuation in the symbol.
+    # Applications generate these in loops from data, so the annotation names
+    # the title it wrote rather than the symbol ActiveAdmin made of it.
+    describe "a batch action generated in a loop and titled with a String" do
+      it "is advertised under a tool name derived from the mangled symbol, with the punctuation removed" do
+        expect(tool_names).to include("post_warning_fridge_left_open", "post_warning_past_use_by_date")
+      end
+
+      it "runs the action the title named, and no other of the same family" do
+        result = client.call_tool("post_warning_fridge_left_open", ids: [post_id("small-gods")])
+
+        expect(result["error"]).to be_nil
+        expect(post_status("small-gods")).to eq("warned:Fridge left open")
+        expect(post_status("a-wizard-of-earthsea")).to eq("draft")
+      end
+    end
+
+    # ActiveAdmin hides a batch action whose :if proc refuses, but consults the
+    # proc only when rendering — a dispatched request reaches the action
+    # regardless. The seeded admin is not the superuser the proc asks for.
+    describe "a batch action ActiveAdmin hides behind an :if proc" do
+      it "is not advertised, because the admin UI would not offer it either" do
+        expect(tool_names).not_to include("post_purge")
+      end
+
+      it "refuses the call as well, so MCP is not the way round the gate, and deletes nothing" do
+        before_count = client.call_tool("query", resource: "Post")["count"]
+
+        result = client.call_tool("post_purge", ids: [post_id("small-gods")])
+
+        expect(result["error"]).to match(/not available/i)
+        expect(client.call_tool("query", resource: "Post")["count"]).to eq(before_count)
+      end
+    end
+
+    # The concern guards the batch dispatch with a controller before_action.
+    # Dispatching through the real controller is what makes that still apply.
+    it "is stopped by a before_action the concern declared, and leaves the records unchanged" do
+      result = client.call_tool("post_guarded_flag", ids: [post_id("small-gods")])
+
+      expect(result["flash"]&.values&.join).to match(/before_action/i)
+      expect(post_status("small-gods")).to eq("draft")
+    end
+  end
 end

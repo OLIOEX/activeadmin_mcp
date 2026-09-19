@@ -133,7 +133,62 @@ ActiveAdmin.register Volunteer do
   end
 end
 
+# Installs the mcp_action DSL. In an application the engine does this before
+# ActiveAdmin loads its registrations; here the registrations below are plain
+# top-level code, so it has to happen before them.
+ActiveadminMcp::ActiveAdminExt.apply_dsl!
+
+module McpSpec
+  # In the shape of the application concerns this gem has to support: the DSL
+  # calls live in self.included and are shared verbatim across resources, so
+  # nothing here can carry an mcp: key of its own without describing every
+  # resource that includes it identically.
+  #
+  # Deliberately awkward in the same three ways a real one is: the same name
+  # used for both a member and a batch action, a member action answering to two
+  # verbs, and a batch action whose form: is a proc rather than a hash.
+  module SharedFlagActions
+    def self.included(dsl)
+      dsl.send(:member_action, :flag, method: [:post, :delete]) do
+        if request.delete?
+          resource.update(location: nil)
+          redirect_to resource_path(resource), notice: "Flag removed"
+        else
+          resource.update(location: params[:label])
+          redirect_to resource_path(resource), notice: "Flagged"
+        end
+      end
+
+      # ActiveAdmin hides a batch action from the UI when its :if proc refuses.
+      dsl.send(:batch_action, :purge, if: proc { current_admin_user&.email == "superuser@example.com" }) do |ids|
+        Shift.where(id: ids).delete_all
+        redirect_to collection_path, notice: "Purged"
+      end
+
+      dsl.send(:batch_action, :flag, form: proc { { reason: :text, notify: :checkbox } }) do |ids, inputs|
+        Shift.where(id: ids).update_all(location: inputs["reason"])
+        redirect_to collection_path, notice: "Flagged #{ids.size}"
+      end
+    end
+  end
+end
+
 ActiveAdmin.register Shift do
+  include McpSpec::SharedFlagActions
+
+  mcp_action :flag, kind: :batch, tool_name: "shift_bulk_flag",
+             description: "Flag the selected shifts",
+             params: { reason: { type: :string, required: true } }
+
+  mcp_action :flag, kind: :member, tool_name: "shift_flag",
+             description: "Flag a shift",
+             params: { reason: { type: :string, required: true } }
+
+  mcp_action :purge, kind: :batch, description: "Purge the selected shifts"
+
+  mcp_action :flag, kind: :member, http_verb: :delete, tool_name: "shift_unflag",
+             description: "Remove a shift's flag"
+
   permit_params :name, :location, :starts_at
 
   form do |f|

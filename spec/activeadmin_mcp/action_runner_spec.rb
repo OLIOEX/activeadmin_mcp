@@ -29,7 +29,7 @@ RSpec.describe ActiveadminMcp::ActionRunner do
   # call, so re-deriving one per example would stub a different object than the
   # one under test.
   def find_definition(name, kind)
-    ActiveadminMcp::ActionCatalog.all.find do |d|
+    ActiveadminMcp::ActionCatalog.all(current_user: admin).find do |d|
       d.action_name == name && d.kind == kind
     end
   end
@@ -192,6 +192,36 @@ RSpec.describe ActiveadminMcp::ActionRunner do
 
       expect(result[:status]).to eq(302)
       expect(volunteer.reload.name).to eq("Suspended: No shows")
+    end
+  end
+
+  # ActiveAdmin hides a batch action whose :if proc refuses, but does not stop
+  # a dispatched request reaching it. Refusing the call as well keeps MCP from
+  # being the way round a gate the admin UI enforces by not offering it.
+  describe "a batch action guarded by an :if proc" do
+    let!(:shift) { Shift.create!(name: "Saturday") }
+
+    after { Shift.delete_all }
+
+    def purge
+      run(find_definition(:purge, :batch), { "ids" => [shift.id.to_s] })
+    end
+
+    it "refuses the call when the proc refuses, and leaves the records alone" do
+      expect(purge[:error]).to match(/not available/i)
+      expect(Shift.exists?(shift.id)).to be(true)
+    end
+
+    it "runs the action for a user the proc admits" do
+      superuser = AdminUser.create!(email: "superuser@example.com")
+      definition = ActiveadminMcp::ActionCatalog.all(current_user: superuser)
+                                                .find { |d| d.action_name == :purge && d.kind == :batch }
+
+      result = described_class.new(definition: definition, current_user: superuser)
+                              .call({ "ids" => [shift.id.to_s] })
+
+      expect(result[:error]).to be_nil
+      expect(Shift.exists?(shift.id)).to be(false)
     end
   end
 end

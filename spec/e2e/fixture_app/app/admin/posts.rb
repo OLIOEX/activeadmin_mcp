@@ -3,6 +3,35 @@
 ActiveAdmin.register Post do
   permit_params :title, :body
 
+  # Neither action below is declared here, so neither can carry an `mcp:` key.
+  # The mcp_action declarations that follow annotate them by name.
+  include Flaggable
+
+  mcp_action :flag, kind: :batch, tool_name: "post_bulk_flag",
+             description: "Flag the selected posts",
+             params: { reason: { type: :string, required: true } }
+
+  mcp_action :flag, kind: :member, tool_name: "post_flag",
+             description: "Flag a post",
+             params: { reason: { type: :string, required: true } }
+
+  mcp_action :flag, kind: :member, http_verb: :delete, tool_name: "post_unflag",
+             description: "Remove a post's flag"
+
+  mcp_action :clear_flags, kind: :collection, description: "Clear the flag on every flagged post"
+
+  # Named by the title the concern gave them, because the symbols ActiveAdmin
+  # derived from those titles carry punctuation. No tool_name: either, so the
+  # derived one has to be usable on its own.
+  Flaggable::WARNING_REASONS.each do |reason|
+    mcp_action "Warning: #{reason}", kind: :batch,
+               description: "Warn the selected posts: #{reason.downcase}"
+  end
+
+  mcp_action :purge, kind: :batch, description: "Delete the selected posts"
+
+  mcp_action :guarded_flag, kind: :batch, description: "Flag the selected posts, if the controller allows it"
+
   # These ActiveAdmin callbacks fire only when the create or update action runs
   # through the real controller, so the e2e suite can read their effects to
   # prove an MCP write is dispatched rather than written straight to the model.

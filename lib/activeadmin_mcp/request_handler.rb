@@ -46,8 +46,9 @@ module ActiveadminMcp
     # an already-assembled list would mean those procs had already run — and
     # their values already been read — for a user authorized for none of it.
     def action_tools
-      ActionCatalog.all.filter_map do |definition|
+      ActionCatalog.all(current_user: @current_user).filter_map do |definition|
         next unless authorized_to_run?(definition)
+        next unless offered_by_active_admin?(definition)
         next unless authorized_to_list?(definition)
 
         {
@@ -66,6 +67,23 @@ module ActiveadminMcp
                    .authorized?(definition.action_name, definition.config.resource_class)
     rescue StandardError => e
       warn("[activeadmin_mcp] hiding #{definition.tool_name}: authorization check raised #{e.class}: #{e.message}")
+      false
+    end
+
+    # ActiveAdmin's own `:if` proc on a batch action decides whether the admin
+    # UI offers it. Evaluated in controller context, as ActiveAdmin evaluates
+    # it, so `authorized?` and `current_admin_user` are in scope. A proc
+    # reaching for request state it cannot have here raises, and the tool is
+    # hidden rather than offered past a gate we could not read.
+    def offered_by_active_admin?(definition)
+      block = definition.display_if
+      return true unless block
+
+      controller = ControllerDispatcher.new(config: definition.config, current_user: @current_user)
+                                       .controller_with_mcp_user
+      !!::MethodOrProcHelper.render_in_context(controller, block)
+    rescue StandardError => e
+      warn("[activeadmin_mcp] hiding #{definition.tool_name}: if: proc raised #{e.class}: #{e.message}")
       false
     end
 
@@ -182,7 +200,7 @@ module ActiveadminMcp
     end
 
     def tool_action(name, args)
-      definition = ActionCatalog.find(name)
+      definition = ActionCatalog.find(name, current_user: @current_user)
       return { error: "Unknown tool: #{name}" } unless definition
 
       ActionRunner.new(definition: definition, current_user: @current_user).call(args)

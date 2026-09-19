@@ -9,6 +9,10 @@ module ActiveadminMcp
   class ActionDefinition
     KINDS = %i[member collection batch].freeze
 
+    # MCP tool names are referenced by clients as identifiers, so keep them to
+    # what every client can quote without escaping.
+    TOOL_NAME = /\A[a-z0-9][a-z0-9_-]*\z/
+
     # JSON Schema scalar types an application may declare.
     TYPES = %i[string integer number boolean array object].freeze
 
@@ -24,18 +28,19 @@ module ActiveadminMcp
 
     attr_reader :config, :action, :kind, :errors
 
-    def self.build(config:, action:, kind:)
+    def self.build(config:, action:, kind:, current_user: nil)
       options = action.mcp_options
       return nil unless options.is_a?(Hash)
 
-      new(config: config, action: action, kind: kind, options: options)
+      new(config: config, action: action, kind: kind, options: options, current_user: current_user)
     end
 
-    def initialize(config:, action:, kind:, options:)
+    def initialize(config:, action:, kind:, options:, current_user: nil)
       @config = config
       @action = action
       @kind = kind
       @options = options
+      @current_user = current_user
       @errors = []
       validate!
     end
@@ -48,8 +53,28 @@ module ActiveadminMcp
       @config.resource_class.name
     end
 
+    # A declaration may choose its own name: an action shared by a concern can
+    # need a different one on each resource, and an action exposed once per
+    # verb needs a distinct name per tool.
     def tool_name
+      declared = @options[:tool_name]
+      return declared.to_s if declared
+
+      derived_tool_name
+    end
+
+    # Squeezed down to the characters a tool name may carry, because an action
+    # name is not always tame: ActiveAdmin derives a batch action's symbol from
+    # a String title and can leave punctuation in it. A resource may still
+    # choose its own name with tool_name:, which is validated rather than
+    # squeezed, since a name someone typed deliberately should not be silently
+    # rewritten.
+    def derived_tool_name
       "#{resource_name.underscore.tr('/', '_')}_#{action_name}"
+        .downcase
+        .gsub(/[^a-z0-9_-]+/, "_")
+        .squeeze("_")
+        .delete_suffix("_")
     end
 
     def description
@@ -60,10 +85,32 @@ module ActiveadminMcp
       @options[:permission]
     end
 
+    # ActiveAdmin's own `:if` proc on a batch action, which decides whether the
+    # admin UI offers it at all. Returned rather than evaluated: like a
+    # `permission:` proc it belongs in controller context, which only the
+    # caller can build.
+    def display_if
+      return nil unless @kind == :batch
+      return nil unless @action.respond_to?(:display_if_block)
+
+      @action.display_if_block
+    end
+
+    # ActiveAdmin always posts a batch action, whatever a declaration says.
+    # Otherwise a declaration may pick among the verbs the action answers to —
+    # `method: [:post, :delete]` is one action with two meanings, and without
+    # this only the first would ever be reachable.
     def http_verb
       return :post if @kind == :batch
 
-      Array(@action.http_verb).first&.to_sym || :get
+      declared = @options[:http_verb]&.to_sym
+      return declared if declared
+
+      action_verbs.first || :get
+    end
+
+    def action_verbs
+      Array(@action.http_verb).compact.map(&:to_sym)
     end
 
     # Declared params, with batch actions inheriting their types from the
@@ -89,14 +136,57 @@ module ActiveadminMcp
 
     def inherited_params
       return {} unless @kind == :batch
-      return {} unless @action.respond_to?(:inputs)
+
+      resolved_form.each_with_object({}) do |(name, widget), acc|
+        acc[name.to_sym] = { type: form_type(widget) }
+      end
+    end
+
+    # A form: entry is usually a widget name, but ActiveAdmin also accepts an
+    # array of options, which it renders as a select. There is no type to read
+    # off that, and its values are not treated as a binding enum: they were
+    # resolved once, at listing time, and a declaration wanting to offer them
+    # should say so with suggestions:, which is advisory by design.
+    def form_type(widget)
+      return :string unless widget.respond_to?(:to_sym)
+
+      FORM_TYPES.fetch(widget.to_sym, :string)
+    end
+
+    # ActiveAdmin lets `form:` be a proc and evaluates it in controller context
+    # at render time, which is the only way a concern shared across resources
+    # can vary its options. Evaluated here the same way, so a proc form still
+    # contributes its param types.
+    #
+    # Deliberately lazy: this runs application code, so it must not happen
+    # while the catalog is merely being built, before the caller has checked
+    # the user is authorized for the action at all. Same posture as
+    # `suggestions:`.
+    def resolved_form
+      return @resolved_form if defined?(@resolved_form)
+
+      @resolved_form = resolve_form || {}
+    end
+
+    def resolve_form
+      return nil unless @action.respond_to?(:inputs)
 
       form = @action.inputs
-      return {} unless form.is_a?(Hash)
+      return form if form.is_a?(Hash)
+      return nil unless form.is_a?(Proc)
 
-      form.each_with_object({}) do |(name, widget), acc|
-        acc[name.to_sym] = { type: FORM_TYPES.fetch(widget.to_sym, :string) }
-      end
+      evaluate_form(form)
+    end
+
+    def evaluate_form(form)
+      controller = ControllerDispatcher.new(config: @config, current_user: @current_user)
+                                       .controller_with_mcp_user
+      evaluated = ::MethodOrProcHelper.render_in_context(controller, form)
+      evaluated.is_a?(Hash) ? evaluated : nil
+    rescue StandardError => e
+      # The tool keeps whatever the declaration said; it just inherits nothing.
+      warn("[activeadmin_mcp] evaluating the #{tool_name} form: proc raised #{e.class}: #{e.message}")
+      nil
     end
 
     def validate!
@@ -105,7 +195,10 @@ module ActiveadminMcp
 
       reserved = reserved_param_name
       form_keys = batch_form_keys
-      params.each do |name, spec|
+      # Declared params only. Inherited ones come from ActiveAdmin's own form:
+      # hash and are always well formed, and reading them would mean evaluating
+      # a proc form here — the one place it must not happen.
+      declared_params.each do |name, spec|
         unless spec.is_a?(Hash)
           @errors << "#{tool_name}: param #{name} must be a Hash"
           next
@@ -142,6 +235,27 @@ module ActiveadminMcp
       end
 
       @errors << "#{tool_name}: permission must be callable" if permission && !permission.respond_to?(:call)
+
+      validate_tool_name!
+      validate_http_verb!
+    end
+
+    def validate_tool_name!
+      return if tool_name.match?(TOOL_NAME)
+
+      @errors << "#{tool_name}: tool_name must match #{TOOL_NAME.source}"
+    end
+
+    # Dispatching a verb the action never declared would reach nothing, or
+    # worse, the wrong branch of the action's own body.
+    def validate_http_verb!
+      declared = @options[:http_verb]&.to_sym
+      return if declared.nil? || @kind == :batch
+
+      verbs = action_verbs
+      return if verbs.empty? || verbs.include?(declared)
+
+      @errors << "#{tool_name}: http_verb #{declared} is not one the action answers to (#{verbs.join(', ')})"
     end
 
     # The permitted param keys for a batch action's `inputs` (its `form:`

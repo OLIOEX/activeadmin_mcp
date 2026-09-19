@@ -5,6 +5,11 @@
 ActiveAdmin.register Review do
   permit_params :body, :status
 
+  # Includes the same concern as Post but annotates none of it, so the e2e
+  # suite can prove sharing an action does not share its MCP exposure: the
+  # opt-in is still per resource.
+  include Flaggable
+
   form do |f|
     f.inputs "Review" do
       f.input :body, hint: "Shown beneath the post"

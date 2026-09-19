@@ -17,7 +17,13 @@ module ActiveadminMcp
 
     initializer "activeadmin_mcp.active_admin_ext" do
       ActiveSupport.on_load(:after_initialize) do
-        ActiveAdmin.after_load { ActiveadminMcp::ActiveAdminExt.apply! } if defined?(::ActiveAdmin)
+        next unless defined?(::ActiveAdmin)
+
+        # The DSL has to exist before ActiveAdmin loads the registrations that
+        # call it; the option readers only have to exist before the catalog is
+        # read, and ActiveAdmin::BatchAction does not exist until load time.
+        ActiveadminMcp::ActiveAdminExt.apply_dsl!
+        ActiveAdmin.after_load { ActiveadminMcp::ActiveAdminExt.apply! }
       end
     end
   end
