@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** the minimum supported Ruby is now 4.0. Applications on Ruby 3.x
+  must stay on the previous release until they upgrade. CI and the release
+  workflow now run on Ruby 4.0.7.
+
 ### Security
 
 - Enforce ActiveAdmin authorization on reads. `list_resources` and `query`

@@ -41,7 +41,7 @@ The server is a Rails engine mounted inside your application (by default at
 
 ## Requirements
 
-- Ruby >= 3.0
+- Ruby >= 4.0
 - Rails >= 6.1
 - ActiveAdmin >= 2.0
 
