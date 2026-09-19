@@ -146,7 +146,7 @@ RSpec.describe ActiveadminMcp::ActionDefinition do
     definition = described_class.build(config: build_config, action: action, kind: :batch)
 
     expect(definition).not_to be_valid
-    expect(definition.errors).to include(match(/param notify_manager is not in the batch action's form/))
+    expect(definition.errors).to include(match(/param notify_manager is not among the batch action's declared form/))
   end
 
   it "is valid when every batch param is in the form hash" do
@@ -160,9 +160,28 @@ RSpec.describe ActiveadminMcp::ActionDefinition do
     expect(definition).to be_valid
   end
 
-  # No form: hash means ActiveAdmin slices nothing, so there is nothing to drop.
-  it "allows declared params on a batch action with no form hash" do
+  # With no form: hash, ActiveAdmin's batch_action controller calls
+  # `inputs.slice(*nil.try(:keys))`, i.e. `slice()`, which drops every
+  # submitted input. So a form-less batch action has an empty permitted set,
+  # and declaring any param is a declaration error, not a free pass.
+  it "is invalid when a form-less batch action declares any param" do
     action = batch_action(:suspend, form: nil, mcp: {
+      description: "Suspend",
+      params: { reason: { type: :string } }
+    })
+
+    definition = described_class.build(config: build_config, action: action, kind: :batch)
+
+    expect(definition).not_to be_valid
+    expect(definition.errors).to include(match(/param reason/))
+  end
+
+  # A Proc form is evaluated by ActiveAdmin in controller context via
+  # MethodOrProcHelper.render_in_context, so we cannot know its keys at
+  # declaration time. We skip the check rather than guess, so this must not
+  # be falsely rejected.
+  it "does not reject a batch action whose form is a Proc" do
+    action = batch_action(:suspend, form: -> { { reason: :text } }, mcp: {
       description: "Suspend",
       params: { reason: { type: :string } }
     })

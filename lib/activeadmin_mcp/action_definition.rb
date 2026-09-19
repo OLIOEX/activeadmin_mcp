@@ -116,12 +116,27 @@ module ActiveadminMcp
         @errors << "#{tool_name}: param #{name} is reserved" if name == reserved
 
         # ActiveAdmin's own batch_action controller method slices the submitted
-        # inputs down to the declared form: keys before calling the block, so a
-        # param declared only under mcp: would be advertised, validated, sent —
-        # and then silently dropped. Refuse it at declaration time instead.
-        if form_keys && !form_keys.include?(name)
-          @errors << "#{tool_name}: param #{name} is not in the batch action's form: hash, " \
-                     "so ActiveAdmin would drop it before the action runs"
+        # inputs down to the keys of the batch action's `inputs` (its `form:`
+        # hash) before calling the block: `inputs.slice(*valid_keys)`. When
+        # there is no `form:` at all, `inputs` is nil, so `valid_keys` is nil,
+        # and `slice(*nil)` is `slice()` — which drops EVERY input, not none.
+        # So a form-less batch action permits nothing, and any declared param
+        # is a declaration error. A Proc form is evaluated by ActiveAdmin in
+        # controller context (MethodOrProcHelper.render_in_context), so we
+        # cannot know its keys here and skip the check rather than guess.
+        case form_keys
+        when :unknown_proc_form
+          nil
+        when :no_form
+          @errors << "#{tool_name}: param #{name} cannot be declared because this batch action " \
+                     "has no form: hash, so ActiveAdmin drops every input before the action runs"
+        when nil
+          nil # not a batch action, or no `inputs` method at all: no rule applies
+        else
+          unless form_keys.include?(name)
+            @errors << "#{tool_name}: param #{name} is not among the batch action's declared " \
+                       "form: keys, so ActiveAdmin would drop it before the action runs"
+          end
         end
 
         type = spec[:type]
@@ -131,17 +146,29 @@ module ActiveadminMcp
       @errors << "#{tool_name}: permission must be callable" if permission && !permission.respond_to?(:call)
     end
 
-    # The declared form: keys of a batch action, or nil when this is not a batch
-    # action or the batch action declares no form at all (in which case
-    # ActiveAdmin passes inputs through unsliced).
+    # The permitted param keys for a batch action's `inputs` (its `form:`
+    # hash), distinguishing three outcomes the caller must treat differently:
+    #
+    # * not a batch action, or the action has no `inputs` method at all ->
+    #   nil, the batch form: rule does not apply.
+    # * `inputs` is a Hash -> its keys, the permitted set ActiveAdmin will
+    #   slice submitted params down to.
+    # * `inputs` is nil (no `form:` declared) -> :no_form. ActiveAdmin still
+    #   slices, against a nil key list, which yields an EMPTY permitted set
+    #   (`hash.slice(*nil)` is `hash.slice()` == `{}`), so every declared
+    #   param here is a declaration error.
+    # * `inputs` is a Proc -> :unknown_proc_form. ActiveAdmin evaluates it in
+    #   controller context via `render_in_context`, so we cannot know its
+    #   keys at declaration time. We skip the check rather than guess.
     def batch_form_keys
       return nil unless @kind == :batch
       return nil unless @action.respond_to?(:inputs)
 
       form = @action.inputs
-      return nil unless form.is_a?(Hash)
+      return form.keys.map(&:to_sym) if form.is_a?(Hash)
+      return :unknown_proc_form if form.is_a?(Proc)
 
-      form.keys.map(&:to_sym)
+      :no_form
     end
 
     def reserved_param_name
