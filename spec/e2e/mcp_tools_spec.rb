@@ -58,6 +58,78 @@ RSpec.describe "the MCP tools" do
     end
   end
 
+  describe "describe_form" do
+    def attribute(result, name)
+      result["attributes"].find { |attribute| attribute["name"] == name }
+    end
+
+    context "for a resource that declares its own ActiveAdmin form block" do
+      let(:result) { client.call_tool("describe_form", resource: "Review") }
+
+      it "reads the description from the declared form, and says that is where it came from" do
+        expect(result["source"]).to eq("form")
+        expect(result["attributes"].map { |attribute| attribute["name"] }).to eq(%w[body status])
+      end
+
+      it "carries the hint, label and input type the form declared for each field" do
+        expect(attribute(result, "body")["hint"]).to eq("Shown beneath the post")
+        expect(attribute(result, "status")["label"]).to eq("Moderation status")
+        expect(attribute(result, "status")["as"]).to eq("select")
+      end
+
+      it "carries the allowed values of a select declared with a literal collection" do
+        expect(attribute(result, "status")["collection"]).to eq(%w[pending approved])
+      end
+
+      it "annotates each field with the column type it is stored in and the model's presence validation" do
+        expect(attribute(result, "body")).to include("type" => "text", "required" => true)
+        expect(attribute(result, "status")["type"]).to eq("string")
+      end
+    end
+
+    context "for a resource that declares no form block" do
+      let(:result) { client.call_tool("describe_form", resource: "Post") }
+
+      it "derives the description from the resource's permitted params, and says so" do
+        expect(result["source"]).to eq("permit_params")
+        expect(result["attributes"].map { |attribute| attribute["name"] }).to eq(%w[title body])
+      end
+
+      it "annotates the derived fields from the model just as it does a declared form's" do
+        expect(attribute(result, "title")).to include("type" => "string", "required" => true)
+      end
+
+      it "describes exactly the fields the create tool will accept, and no others" do
+        expect(result["attributes"].map { |attribute| attribute["name"] }).not_to include("slug", "status")
+      end
+    end
+
+    it "describes the edit form when asked for it" do
+      result = client.call_tool("describe_form", resource: "Post", action: "edit")
+
+      expect(result["action"]).to eq("edit")
+      expect(result["error"]).to be_nil
+    end
+
+    it "refuses the new form of a resource registered without the create action" do
+      result = client.call_tool("describe_form", resource: "Author")
+
+      expect(result["error"]).to eq("Resource is not creatable: Author")
+    end
+
+    it "refuses to describe a resource that declares no permitted params, since nothing may be written" do
+      result = client.call_tool("describe_form", resource: "Tag")
+
+      expect(result["error"]).to match(/permit_params/)
+    end
+
+    it "reports an unregistered resource rather than raising" do
+      result = client.call_tool("describe_form", resource: "Nonexistent")
+
+      expect(result["error"]).to eq("Resource not found: Nonexistent")
+    end
+  end
+
   describe "create" do
     def posts
       client.call_tool("query", resource: "Post")["records"]

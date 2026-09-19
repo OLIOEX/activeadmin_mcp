@@ -37,7 +37,8 @@ The server is a Rails engine mounted inside your application (by default at
   `before_save`/`after_update` callbacks, the controller's `before_action`
   chain and your authorization adapter all apply exactly as they do when
   someone clicks Save in the admin UI. Resources that don't register the
-  action are refused.
+  action are refused, and `describe_form` will tell a client what a given
+  resource's form accepts before it tries.
 - **Authentication is optional but built in.** Enable Bearer-token auth and the
   installer adds an "MCP Tokens" management page to your ActiveAdmin panel.
 
@@ -73,6 +74,7 @@ read/query setup without authentication.
 | `query` | Query a resource the current user may read, using Ransack syntax, scoped to the records they may access (`limit` defaults to 25, capped at 100). |
 | `create` | Create a new record through the resource's ActiveAdmin create action, honouring its permitted params, callbacks and authorization. |
 | `update` | Update an existing record through the resource's ActiveAdmin update action, honouring its permitted params, callbacks and authorization. |
+| `describe_form` | Describe the fields of a resource's form — input types, labels, hints, allowed values, column types and which are required — so a `create` or `update` call need not guess them. |
 | *(per action)* | Any ActiveAdmin member, collection or batch action the application has opted in with an `mcp:` option, exposed as its own tool. |
 
 ### Query examples
@@ -115,6 +117,43 @@ action, so a write from MCP is the same write the admin UI makes:
 
 A write rejected by the model comes back as a `Validation failed` error with
 the model's own messages in `details`, and nothing is written.
+
+### Describing a form
+
+```
+What can I set when creating a post?
+→ describe_form(resource: "Post")
+→ describe_form(resource: "Post", action: "edit")
+```
+
+`describe_form` reads the resource's own `form do ... end` block when it
+declares one, reporting each input's `as:`, `label:`, `hint:` and — when the
+`collection:` is a literal array — its allowed values. Resources that declare
+no form block get a description derived from their `permit_params` instead:
+ActiveAdmin renders a bare `f.inputs` for those, which Formtastic only expands
+at render time, so there is nothing to read. The response's `source` says which
+of the two you are looking at.
+
+Either way every field is annotated from the model with the column type it is
+stored in and whether the model validates its presence. `has_many` blocks are
+reported under `nested` rather than flattened in with the record's own fields.
+
+`action:` selects the gate, not the shape — ActiveAdmin uses one form block for
+both. `"new"` (the default) requires the resource to register `create` and pass
+`create` authorization; `"edit"` requires `update`. Describing a form you could
+never submit tells you nothing you can act on, so it is refused with the same
+messages `create` and `update` use.
+
+Two limits worth knowing:
+
+- A `collection:` that is an `ActiveRecord::Relation` or a proc is omitted
+  rather than evaluated. Describing a form should not fire a query, and a
+  relation can be arbitrarily large. Use an action's
+  [`suggestions:`](#running-member-collection-and-batch-actions) when you want
+  dynamic values.
+- A field a form block declares but `permit_params` omits is described and then
+  silently dropped on write. This cannot arise on the `permit_params` fallback
+  path.
 
 ### Running member, collection and batch actions
 
