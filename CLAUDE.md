@@ -79,3 +79,10 @@ State the behaviour and its condition, not the mechanics:
 Prefer a long description to a comment explaining a short one. Favour the
 language of the README and the MCP tools — resources, attributes, permitted
 params, authorization — over the language of the implementation.
+
+# Guidelines
+
+* ALWAYS use descriptive method and variable names instead of comments. Don't add comments to code — names should carry the meaning
+* ALWAYS use British English everywhere — strings, comments, identifiers, method/variable names, commit messages. (favourite, colour, organisation.)
+* ALWAYS use inclusive language. Avoid gendered pronouns and acronyms
+* NEVER run the full test suite locally. Push the branch and let the GitHub Actions run cover it. Locally, run only the specs for the files you touched plus what they cascade into.
