@@ -51,6 +51,14 @@ module ActiveadminMcp
       auth_method = @config.namespace.authentication_method
       controller.define_singleton_method(auth_method) { true } if auth_method
 
+      # The synthesized request carries no session-bound CSRF token, so
+      # Rails' own forgery protection would refuse every non-GET action
+      # (member actions declared `method: :post`, and every batch action,
+      # which always dispatches as one). The MCP request has already
+      # authenticated by bearer token; this does NOT skip authorization,
+      # which still runs in full.
+      controller.define_singleton_method(:verified_request?) { true }
+
       controller
     end
 
