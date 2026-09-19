@@ -37,7 +37,14 @@ HTTP with a real API token.
 `rake e2e` caches the generated application, so only the first run is slow.
 `E2E_REBUILD=1` forces a rebuild. See the README's "Running the tests" section.
 
-When you add an e2e example, make sure it can actually fail. Change the
-generated application so the behaviour under test is wrong, watch the example
-fail, then restore it. An end-to-end suite that passes regardless of what the
-code does is worse than no suite, because it is believed.
+The application it generates is not written from heredocs: the ActiveAdmin
+registrations, models, migrations and seeds it uses are checked in under
+`spec/e2e/fixture_app/` and copied into place, so you can read and edit the
+thing the suite tests against. Any static file you need to add to that
+application belongs there too, not in a heredoc inside the builder.
+
+When you add an e2e example, make sure it can actually fail. Edit the relevant
+file under `spec/e2e/fixture_app/` so the behaviour under test is wrong, watch
+the example fail, then restore it — editing a fixture invalidates the build
+cache, so the next run picks it up. An end-to-end suite that passes regardless
+of what the code does is worse than no suite, because it is believed.

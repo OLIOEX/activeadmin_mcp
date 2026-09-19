@@ -9,29 +9,37 @@ module E2E
   # Generates a real Rails + ActiveAdmin application with the gem under test
   # installed into it, and caches the result between runs.
   #
-  # The application is cached on a fingerprint of this file, so editing the
-  # build recipe forces a rebuild. Editing the gem's own library code does
-  # not, and must not: the application references the gem with `path:`, so it
-  # always loads the current working tree.
+  # The application is cached on a fingerprint of this file and of everything
+  # under `../fixture_app`, so editing either the build recipe or a fixture
+  # forces a rebuild. Editing the gem's own library code does not, and must
+  # not: the application references the gem with `path:`, so it always loads
+  # the current working tree.
   class AppBuilder
     RAILS_VERSION = "7.2.2.2"
     REPO_ROOT = File.expand_path("../../..", __dir__)
     APP_PATH = File.join(REPO_ROOT, "tmp", "e2e_app")
     FINGERPRINT_PATH = File.join(APP_PATH, ".e2e_fingerprint")
 
+    # Checked-in files copied over the generated application. Kept as real
+    # files rather than heredocs so they can be read and edited directly.
+    FIXTURE_APP_PATH = File.expand_path("../fixture_app", __dir__)
+
+    # Documentation, not part of the application.
+    FIXTURE_DOCS = "README.md"
+
+    # Appended to the generated Gemfile rather than copied into place.
+    FIXTURE_GEMFILE = "Gemfile.deps"
+
+    DATABASE_PATH = "storage/development.sqlite3"
+
+    # A copy of the database taken immediately after migrating and seeding.
+    # Restoring it is a file copy; re-seeding is a full Rails boot, so this
+    # is the difference between roughly a second and roughly nothing on
+    # every cached run.
+    DATABASE_SNAPSHOT_PATH = "storage/seeded.sqlite3"
+
     ADMIN_EMAIL = "admin@example.com"
     ADMIN_PASSWORD = "password"
-
-    # Rails 7.2's ActiveSupport::JSON.decode still calls JSON.parse with the
-    # quirks_mode keyword, which the json gem dropped in 2.9.0. Any request
-    # with a JSON body 500s until this is pinned back below that line.
-    GEMFILE_ADDITIONS = <<~RUBY
-      gem "activeadmin", "~> 3.2"
-      gem "devise"
-      gem "sassc-rails"
-      gem "json", "< 2.9"
-      gem "activeadmin_mcp", path: "GEM_PATH"
-    RUBY
 
     class BuildError < StandardError; end
 
@@ -44,12 +52,12 @@ module E2E
       # the generated application resolves against its own Gemfile. Raises with
       # the combined output on failure: a silent build failure here surfaces
       # much later as an inscrutable boot error.
-      def run!(command, chdir: APP_PATH)
+      def run!(command, chdir: APP_PATH, env: {})
         output = nil
         status = nil
 
         Bundler.with_unbundled_env do
-          output, status = Open3.capture2e(*command, chdir: chdir)
+          output, status = Open3.capture2e(env, *command, chdir: chdir)
         end
 
         return output if status.success?
@@ -61,11 +69,14 @@ module E2E
     def build!
       if cached?
         # The bundle lives inside the cached directory (vendor/bundle), but a
-        # cache restore does not guarantee it is satisfied for this machine,
-        # and seed data may have been mutated by the previous run's `update`
-        # examples. Both are cheap to redo when already correct.
+        # cache restore does not guarantee it is satisfied for this machine.
         bundle_install
-        seed
+
+        # The previous run's `update` examples mutated the seed data, so the
+        # database has to be put back. Fall back to re-seeding when there is
+        # no snapshot, which is the case for a cache saved before snapshots
+        # existed.
+        restore_database || seed
         return APP_PATH
       end
 
@@ -77,13 +88,12 @@ module E2E
       vendor_bundle_path
       bundle_install
       install_active_admin
-      generate_fixture_models
-      write_model_overrides
-      write_admin_registrations
+      copy_fixture_app
       install_mcp
       configure_mcp
       migrate
       seed
+      snapshot_database
 
       File.write(FINGERPRINT_PATH, fingerprint)
       APP_PATH
@@ -99,11 +109,22 @@ module E2E
     end
 
     def fingerprint
-      Digest::SHA256.hexdigest([RAILS_VERSION, File.read(__FILE__)].join("\n"))
+      Digest::SHA256.hexdigest([RAILS_VERSION, File.read(__FILE__), fixture_digest].join("\n"))
     end
 
-    def run!(command, chdir: APP_PATH)
-      self.class.run!(command, chdir: chdir)
+    # Hashes every fixture's path and contents, so editing one invalidates the
+    # cache. Without this the fixtures would move out of this file's digest and
+    # an edited fixture would be silently ignored on the next run.
+    def fixture_digest
+      paths = Dir.glob(File.join(FIXTURE_APP_PATH, "**", "*"))
+                 .select { |path| File.file?(path) }
+                 .reject { |path| File.basename(path) == FIXTURE_DOCS }
+
+      paths.sort.map { |path| "#{path.delete_prefix(FIXTURE_APP_PATH)}\n#{File.read(path)}" }.join("\n")
+    end
+
+    def run!(command, chdir: APP_PATH, env: {})
+      self.class.run!(command, chdir: chdir, env: env)
     end
 
     def generate_app
@@ -140,9 +161,11 @@ module E2E
     end
 
     def write_gemfile
+      additions = File.read(File.join(FIXTURE_APP_PATH, FIXTURE_GEMFILE)).gsub("GEM_PATH", REPO_ROOT)
+
       File.open(File.join(APP_PATH, "Gemfile"), "a") do |f|
         f.puts
-        f.puts GEMFILE_ADDITIONS.gsub("GEM_PATH", REPO_ROOT)
+        f.puts additions
       end
     end
 
@@ -163,58 +186,20 @@ module E2E
       run!(["bin/rails", "generate", "active_admin:install"])
     end
 
-    def generate_fixture_models
-      run!(["bin/rails", "generate", "model", "Author", "name:string", "email:string"])
-      run!(["bin/rails", "generate", "model", "Post", "title:string", "body:text", "slug:string"])
+    # Copies the checked-in fixture application over what the generators
+    # produced: the ActiveAdmin registrations, the model allowlists, and the
+    # seeds. See spec/e2e/fixture_app/README.md for what each file proves.
+    def copy_fixture_app
+      fixture_entries.each do |entry|
+        FileUtils.cp_r(File.join(FIXTURE_APP_PATH, entry), APP_PATH)
+      end
     end
 
-    # Ransack 4 (used by ActiveAdmin 3.x, and called directly by the gem's
-    # `query` tool) refuses to filter on any attribute not listed in a
-    # model's ransackable_attributes allowlist. Without this override every
-    # `query` example against these fixtures would fail with a Ransack
-    # error rather than exercising the gem.
-    def write_model_overrides
-      File.write(File.join(APP_PATH, "app/models/post.rb"), <<~RUBY)
-        # frozen_string_literal: true
-
-        class Post < ApplicationRecord
-          def self.ransackable_attributes(_auth_object = nil)
-            column_names
-          end
-        end
-      RUBY
-
-      File.write(File.join(APP_PATH, "app/models/author.rb"), <<~RUBY)
-        # frozen_string_literal: true
-
-        class Author < ApplicationRecord
-          def self.ransackable_attributes(_auth_object = nil)
-            column_names
-          end
-        end
-      RUBY
-    end
-
-    # Post is fully editable but permits only title and body, so the suite can
-    # prove an unpermitted attribute (slug) is dropped rather than written.
-    # Author registers no update action, so the suite can prove update refuses
-    # a resource the admin UI would not let you edit either.
-    def write_admin_registrations
-      File.write(File.join(APP_PATH, "app/admin/posts.rb"), <<~RUBY)
-        # frozen_string_literal: true
-
-        ActiveAdmin.register Post do
-          permit_params :title, :body
-        end
-      RUBY
-
-      File.write(File.join(APP_PATH, "app/admin/authors.rb"), <<~RUBY)
-        # frozen_string_literal: true
-
-        ActiveAdmin.register Author do
-          actions :index, :show
-        end
-      RUBY
+    # Everything in the fixture directory that belongs in the application:
+    # not the README, and not the Gemfile fragment, which is appended to the
+    # generated Gemfile rather than copied over it.
+    def fixture_entries
+      (Dir.children(FIXTURE_APP_PATH) - [FIXTURE_DOCS, FIXTURE_GEMFILE]).sort
     end
 
     def install_mcp
@@ -239,44 +224,32 @@ module E2E
       run!(["bin/rails", "db:migrate"])
     end
 
-    def seed
-      run!(["bin/rails", "runner", SEED_SCRIPT])
+    # Safe to copy the database file directly: the seeding process has
+    # exited by this point, so SQLite has checkpointed its write-ahead log
+    # into the main file and removed it.
+    def snapshot_database
+      FileUtils.cp(File.join(APP_PATH, DATABASE_PATH), File.join(APP_PATH, DATABASE_SNAPSHOT_PATH))
     end
 
-    # Restorative rather than create-only: this runs on every suite run
-    # (cached or not), so it must reset any row the `update` examples
-    # mutated (e.g. the small-gods post's title) back to its seeded values,
-    # not just create the row if missing. Records are looked up by slug
-    # (posts) or email (authors/admin user) so ids and slugs stay stable
-    # across runs, which the `update` examples rely on.
-    SEED_SCRIPT = <<~RUBY
-      user = AdminUser.find_or_initialize_by(email: "#{ADMIN_EMAIL}")
-      user.password = "#{ADMIN_PASSWORD}"
-      user.password_confirmation = "#{ADMIN_PASSWORD}"
-      user.save!
+    # Returns false when there is nothing to restore, so the caller can seed
+    # instead. Any write-ahead log left behind by a server that did not shut
+    # down cleanly is discarded: replaying it over a restored database would
+    # corrupt it.
+    def restore_database
+      snapshot = File.join(APP_PATH, DATABASE_SNAPSHOT_PATH)
+      return false unless File.exist?(snapshot)
 
-      ursula = Author.find_or_initialize_by(email: "ursula@example.com")
-      ursula.name = "Ursula"
-      ursula.save!
+      database = File.join(APP_PATH, DATABASE_PATH)
+      FileUtils.rm_f(["#{database}-wal", "#{database}-shm"])
+      FileUtils.cp(snapshot, database)
+      true
+    end
 
-      terry = Author.find_or_initialize_by(email: "terry@example.com")
-      terry.name = "Terry"
-      terry.save!
-
-      earthsea = Post.find_or_initialize_by(slug: "a-wizard-of-earthsea")
-      earthsea.title = "A Wizard of Earthsea"
-      earthsea.body = "The first."
-      earthsea.save!
-
-      atuan = Post.find_or_initialize_by(slug: "the-tombs-of-atuan")
-      atuan.title = "The Tombs of Atuan"
-      atuan.body = "The second."
-      atuan.save!
-
-      small_gods = Post.find_or_initialize_by(slug: "small-gods")
-      small_gods.title = "Small Gods"
-      small_gods.body = "Unrelated."
-      small_gods.save!
-    RUBY
+    def seed
+      run!(
+        ["bin/rails", "db:seed"],
+        env: { "E2E_ADMIN_EMAIL" => ADMIN_EMAIL, "E2E_ADMIN_PASSWORD" => ADMIN_PASSWORD }
+      )
+    end
   end
 end
