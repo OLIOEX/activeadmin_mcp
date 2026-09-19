@@ -2,7 +2,7 @@
 # GEM_PATH is substituted with this repository's root, so the application
 # always loads the gem from the working tree rather than from RubyGems.
 
-gem "activeadmin", "~> 3.2"
+gem "activeadmin", "~> 3.5"
 gem "devise"
 gem "sassc-rails"
 
