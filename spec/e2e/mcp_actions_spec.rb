@@ -61,10 +61,7 @@ RSpec.describe "MCP actions declared with an mcp: option" do
         expect(post_status("small-gods")).to eq("draft")
       end
 
-      # Absence from tools/list is not by itself a guarantee: a tool that were
-      # merely hidden but still dispatchable by name would be a hole, not an
-      # untidiness. This asserts the call side of the opt-in promise.
-      it "is refused as an unknown tool when it carries no mcp: key, and leaves the record untouched" do
+      it "is refused as an unknown tool when it carries no mcp: key, and leaves the record untouched, since being absent from tools/list would not on its own stop it being dispatched by name" do
         result = client.call_tool("post_archive", id: post_id("small-gods"))
 
         expect(result["error"]).to eq("Unknown tool: post_archive")
@@ -92,9 +89,7 @@ RSpec.describe "MCP actions declared with an mcp: option" do
         expect(post_status("small-gods")).to eq("draft")
       end
 
-      # Without this, a proc hardcoded to refuse everything would satisfy the
-      # example above: the refusal has to be shown to depend on the record.
-      it "allows the call once the record satisfies the proc, proving the proc is consulted per record rather than refusing unconditionally" do
+      it "allows the call once the record satisfies the proc, proving the proc is consulted per record rather than refusing unconditionally as a proc hardcoded to refuse would also do" do
         id = post_id("small-gods")
         client.call_tool("post_publish", id: id, visibility: "public")
 
