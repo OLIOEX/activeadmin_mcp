@@ -1,0 +1,14 @@
+# Appended to the generated application's Gemfile by AppBuilder#write_gemfile.
+# GEM_PATH is substituted with this repository's root, so the application
+# always loads the gem from the working tree rather than from RubyGems.
+
+gem "activeadmin", "~> 3.5"
+gem "devise"
+gem "sassc-rails"
+
+# Rails 7.2's ActiveSupport::JSON.decode still calls JSON.parse with the
+# quirks_mode keyword, which the json gem dropped in 2.9.0. Any request with a
+# JSON body 500s until this is pinned back below that line.
+gem "json", "< 2.9"
+
+gem "activeadmin_mcp", path: "GEM_PATH"

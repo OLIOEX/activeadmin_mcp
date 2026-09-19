@@ -1,0 +1,2 @@
+--require ./spec/e2e/e2e_helper.rb
+--format documentation

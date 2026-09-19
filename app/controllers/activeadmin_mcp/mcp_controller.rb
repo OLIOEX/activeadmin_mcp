@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module ActiveadminMcp
   class McpController < ActionController::API
     before_action :authenticate_mcp_token!

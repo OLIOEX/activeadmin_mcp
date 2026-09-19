@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** the minimum supported Ruby is now 4.0 and the minimum Rails is
+  7.2, and ActiveAdmin is constrained to `~> 3.5`. Applications outside those
+  must stay on the previous release until they upgrade. Rails 7.2 is the oldest
+  release this gem's end-to-end suite runs on Ruby 4; the ActiveAdmin
+  constraint pins the gem to the 3.5 series it is tested against, and will need
+  raising deliberately for ActiveAdmin 4. CI and the release workflow now run
+  on Ruby 4.0.7.
+
 ### Security
 
 - Enforce ActiveAdmin authorization on reads. `list_resources` and `query`

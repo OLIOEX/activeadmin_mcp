@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 ActiveadminMcp.configure do |config|
   # Uncomment to enable API token authentication.
   # Requires running the auth migration first:
