@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module ActiveadminMcp
   # Every patch this gem applies to ActiveAdmin lives in this one file, so the
   # coupling has a single place to check when ActiveAdmin is upgraded.

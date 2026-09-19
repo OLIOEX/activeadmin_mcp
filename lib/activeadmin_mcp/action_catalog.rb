@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module ActiveadminMcp
   # Finds every ActiveAdmin action an application has opted in to MCP.
   #

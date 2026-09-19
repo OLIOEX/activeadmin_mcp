@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module ActiveadminMcp
   # Runs a real ActiveAdmin controller action out of band, so an MCP tool call
   # goes through the same before_action chain, authorization and callbacks as a

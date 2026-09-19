@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module ActiveadminMcp
   # One ActiveAdmin action that an application has opted in to MCP, normalised
   # so the rest of the engine does not care whether it came from a

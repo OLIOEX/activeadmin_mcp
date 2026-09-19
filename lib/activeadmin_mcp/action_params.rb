@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module ActiveadminMcp
   # Validates and coerces a tool call's arguments against its ActionDefinition
   # before anything reaches the controller.

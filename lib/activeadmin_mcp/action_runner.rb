@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module ActiveadminMcp
   # Runs one opted-in ActiveAdmin action for an MCP client.
   #

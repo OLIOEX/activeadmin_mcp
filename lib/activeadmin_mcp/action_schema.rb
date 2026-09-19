@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 module ActiveadminMcp
   # Builds the JSON Schema an MCP client sees for one opted-in action.
   #

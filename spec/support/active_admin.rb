@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 # Boots a minimal Rails + ActiveAdmin application so specs can exercise real
 # ActiveAdmin objects (resource configs, controllers, dispatch) rather than
 # doubles. Required only by specs that genuinely need it; the rest of the
