@@ -17,6 +17,11 @@ ActiveadminMcp.configure do |config|
   # Path where the MCP server is mounted.
   # config.mount_path = "/mcp"
 
+  # How the engine adds its route: :prepend (default), :append, or :none.
+  # Set it to :none when you want to mount the engine yourself, for instance
+  # inside a constraints block your admin routes already sit in.
+  # config.mount_strategy = :prepend
+
   # HTTP header used to read the Bearer token from.
   # Useful when a reverse proxy (e.g. AWS Verified Access) strips the
   # standard Authorization header.

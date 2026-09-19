@@ -101,6 +101,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   raising deliberately for ActiveAdmin 4. CI and the release workflow now run
   on Ruby 4.0.7.
 
+- The generated initializer now carries `mount_strategy` alongside the other
+  options, commented out like them. It was documented in the README but absent
+  from the file, so nobody reading their own initializer would have learnt it
+  exists.
+
+- The README's examples are now written against the same `Post`, `Author`,
+  `Review` and `Tag` registrations the end-to-end suite builds and drives,
+  which are checked in under `spec/e2e/fixture_app/`. They previously used
+  resources that exist nowhere in the repository, so there was no way to read
+  a documented claim next to the example that exercises it.
+
 ### Removed
 
 - The fallback that derived writable fields from a resource's `form do ... end`
