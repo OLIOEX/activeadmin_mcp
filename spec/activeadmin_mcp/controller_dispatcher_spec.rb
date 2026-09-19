@@ -1,15 +1,6 @@
 require "spec_helper"
 require "support/active_admin"
 
-# An authorization adapter that denies everything, used to prove that
-# neutralising the namespace's authentication_method (see controller_with_mcp_user)
-# does not also neutralise authorization, which must keep running in full.
-class DenyingAuthorizationAdapter < ActiveAdmin::AuthorizationAdapter
-  def authorized?(_action, _subject = nil)
-    false
-  end
-end
-
 RSpec.describe ActiveadminMcp::ControllerDispatcher do
   let(:config) { McpSpec::ActiveAdminHarness.volunteer_config }
   let(:admin) { AdminUser.create!(email: "admin@example.com") }
@@ -20,13 +11,14 @@ RSpec.describe ActiveadminMcp::ControllerDispatcher do
     AdminUser.delete_all
   end
 
-  def dispatch(action:, params: {}, path: nil, path_params: {})
+  def dispatch(action:, params: {}, path: nil, path_params: {}, &block)
     described_class.new(config: config, current_user: admin).call(
       action: action,
       path: path || config.route_member_action_path(action, volunteer),
       verb: :post,
       params: params,
-      path_params: { id: volunteer.id.to_s }.merge(path_params)
+      path_params: { id: volunteer.id.to_s }.merge(path_params),
+      &block
     )
   end
 
@@ -154,6 +146,42 @@ RSpec.describe ActiveadminMcp::ControllerDispatcher do
       expect(result[:flash]&.values&.join).to match(/not authorized/i)
 
       expect(volunteer.reload.name).to eq("Ann")
+    end
+  end
+
+  # Writes need more than the redirect: the caller has to read the record the
+  # controller built or loaded, and its validation errors, off the controller
+  # itself. The block is the seam that lets it.
+  describe "handing the processed controller back to the caller" do
+    it "yields the controller that processed the request" do
+      yielded = nil
+
+      dispatch(action: :create_warning, params: { reason: "Late again" }) { |c| yielded = c }
+
+      expect(yielded).to be_a(config.controller)
+      expect(yielded.send(:get_resource_ivar)).to eq(volunteer)
+    end
+
+    # A failed write re-renders the form rather than redirecting, and that
+    # render can blow up in a synthesized request. The record carrying the
+    # validation errors must still reach the caller.
+    it "yields the controller even when processing raises" do
+      allow_any_instance_of(config.controller).to receive(:create_warning).and_raise("kaboom")
+      allow_any_instance_of(described_class).to receive(:warn)
+      yielded = nil
+
+      result = dispatch(action: :create_warning, params: { reason: "Late" }) { |c| yielded = c }
+
+      expect(yielded).to be_a(config.controller)
+      expect(result[:error]).to eq("Volunteer#create_warning failed")
+    end
+
+    it "keeps a block that raises from destroying the result" do
+      allow_any_instance_of(described_class).to receive(:warn)
+
+      result = dispatch(action: :create_warning, params: { reason: "Late again" }) { raise "from the block" }
+
+      expect(result[:status]).to eq(302)
     end
   end
 end

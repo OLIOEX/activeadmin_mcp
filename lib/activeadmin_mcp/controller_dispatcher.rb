@@ -14,6 +14,13 @@ module ActiveadminMcp
       @current_user = current_user
     end
 
+    # Yields the controller once it has finished processing, so a caller that
+    # needs more than the redirect — the record a write built or loaded, and
+    # its validation errors — can read it off the controller itself. The block
+    # runs whether processing succeeded or raised, because a write that fails
+    # its validations re-renders the form, and that render is exactly the kind
+    # of thing a synthesized request can blow up on. Its return value is
+    # ignored and an exception inside it never reaches the caller.
     def call(action:, path:, verb: :get, params: {}, path_params: {})
       controller = controller_with_mcp_user
       request = build_request(path: path, verb: verb, params: params, action: action, path_params: path_params)
@@ -21,15 +28,19 @@ module ActiveadminMcp
 
       controller.set_request!(request)
       controller.set_response!(response)
-      controller.process(action)
 
-      capture(request, response)
-    rescue StandardError => e
-      # The exception text can carry internals — SQL fragments, table names,
-      # file paths. It belongs in the application's log, not in a tool result
-      # that goes to an MCP client.
-      warn("[activeadmin_mcp] #{@config.resource_class.name}##{action} raised #{e.class}: #{e.message}")
-      { error: "#{@config.resource_class.name}##{action} failed" }
+      begin
+        controller.process(action)
+        capture(request, response)
+      rescue StandardError => e
+        # The exception text can carry internals — SQL fragments, table names,
+        # file paths. It belongs in the application's log, not in a tool result
+        # that goes to an MCP client.
+        warn("[activeadmin_mcp] #{@config.resource_class.name}##{action} raised #{e.class}: #{e.message}")
+        { error: "#{@config.resource_class.name}##{action} failed" }
+      ensure
+        inspect_controller(controller, action) { |processed| yield processed } if block_given?
+      end
     end
 
     # A controller instance for this resource with the MCP user injected, ready
@@ -76,6 +87,12 @@ module ActiveadminMcp
         namespace_method,
         :current_active_admin_user,
       ].select { |name| name.respond_to?(:to_sym) }.map(&:to_sym).uniq
+    end
+
+    def inspect_controller(controller, action)
+      yield controller
+    rescue StandardError => e
+      warn("[activeadmin_mcp] inspecting #{@config.resource_class.name}##{action} raised #{e.class}: #{e.message}")
     end
 
     def build_request(path:, verb:, params:, action:, path_params:)

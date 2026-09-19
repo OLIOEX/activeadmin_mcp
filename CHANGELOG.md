@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A `create` tool, which creates a record by dispatching the resource's own
+  ActiveAdmin `create` action. Resources registered without that action are
+  refused, `permit_params` decides what may be written, the namespace's
+  authorization adapter is consulted before dispatch and again inside the
+  controller, and every ActiveAdmin callback (`before_build`, `before_create`,
+  `before_save`, …) fires. A record the model rejects comes back as a
+  `Validation failed` error carrying the model's own messages.
+
 - ActiveAdmin `member_action`, `collection_action` and `batch_action`
   definitions can be exposed as MCP tools by adding an `mcp:` option to them.
   Actions are opt-in: nothing is exposed without that option. Execution runs
@@ -38,6 +46,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Behaviour change:** `update` now dispatches the resource's real ActiveAdmin
+  `update` action instead of calling `record.update` directly. Everything the
+  admin UI runs on a save now runs on an MCP update too: the controller's
+  `before_action` chain, ActiveAdmin's `before_update` / `after_update` /
+  `before_save` / `after_save` callbacks, and the controller's own
+  authorization check. Applications whose callbacks have side effects —
+  auditing, notifications, derived columns, background jobs — will see those
+  fire for MCP updates where previously they were silently skipped.
+
+  Two smaller consequences of the same change: a write rejected by the model
+  now reports `Validation failed` with the model's messages in `details`
+  rather than reporting whatever `record.update` returned, and the record
+  echoed back in the result has the same sensitive attributes stripped from it
+  (`encrypted_password`, `password_digest`, `reset_password_token`, `api_key`,
+  `secret`) that `list_resources` and `query` already omit.
+
 - **Breaking:** the minimum supported Ruby is now 4.0 and the minimum Rails is
   7.2, and ActiveAdmin is constrained to `~> 3.5`. Applications outside those
   must stay on the previous release until they upgrade. Rails 7.2 is the oldest
@@ -45,6 +69,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   constraint pins the gem to the 3.5 series it is tested against, and will need
   raising deliberately for ActiveAdmin 4. CI and the release workflow now run
   on Ruby 4.0.7.
+
+### Removed
+
+- The fallback that derived writable fields from a resource's `form do ... end`
+  block when it declared no `permit_params`. Now that writes dispatch through
+  the real controller, ActiveAdmin resolves permitted params itself, and the
+  fallback turns out to have been granting MCP clients a write the admin UI
+  does not grant: a resource with no `permit_params` cannot be saved through
+  ActiveAdmin's own forms at all, because Rails raises
+  `ActiveModel::ForbiddenAttributesError` on the unpermitted params. Such a
+  resource is now refused with a message naming the missing `permit_params`,
+  rather than being written to.
 
 ### Security
 

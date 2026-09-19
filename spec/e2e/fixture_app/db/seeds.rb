@@ -36,3 +36,8 @@ end
     post.save!
   end
 end
+
+# A resource registered without `permit_params`, so the write tools have
+# something to refuse. Nothing mutates it: the examples that name it assert it
+# is unchanged.
+Tag.find_or_initialize_by(name: "fantasy").save!

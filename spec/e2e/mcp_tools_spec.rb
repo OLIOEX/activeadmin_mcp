@@ -58,6 +58,60 @@ RSpec.describe "the MCP tools" do
     end
   end
 
+  describe "create" do
+    def posts
+      client.call_tool("query", resource: "Post")["records"]
+    end
+
+    it "creates a record through the resource's own ActiveAdmin create action, so its callbacks run" do
+      result = client.call_tool("create", resource: "Post", attributes: { title: "Mort", body: "The fourth." })
+
+      expect(result["error"]).to be_nil
+      expect(result["created"]).to contain_exactly("title", "body")
+
+      created = client.call_tool("query", resource: "Post", q: { id_eq: result["id"] })["records"].first
+      expect(created["title"]).to eq("Mort")
+      expect(created["slug"]).to eq("mort")
+    end
+
+    it "drops an attribute the resource's permitted params do not accept" do
+      result = client.call_tool(
+        "create",
+        resource: "Post",
+        attributes: { title: "Mort", slug: "tampered" }
+      )
+
+      expect(result["created"]).to eq(["title"])
+
+      created = client.call_tool("query", resource: "Post", q: { id_eq: result["id"] })["records"].first
+      expect(created["slug"]).to eq("mort")
+    end
+
+    it "reports the model's validation messages and creates nothing when the new record is rejected" do
+      result = client.call_tool("create", resource: "Post", attributes: { title: "", body: "No title." })
+
+      expect(result["error"]).to match(/validation/i)
+      expect(result["details"]).to include("Title can't be blank")
+      expect(posts.length).to eq(3)
+    end
+
+    it "refuses to create a record for a resource registered without the create action" do
+      result = client.call_tool("create", resource: "Author", attributes: { name: "Iain" })
+
+      expect(result["error"]).to eq("Resource is not creatable: Author")
+      expect(client.call_tool("query", resource: "Author")["count"]).to eq(2)
+    end
+
+    it "refuses to create a record for a resource that declares no permitted params" do
+      result = client.call_tool("create", resource: "Tag", attributes: { name: "science-fiction" })
+
+      expect(result["error"]).to match(/permit_params/)
+
+      tags = client.call_tool("query", resource: "Tag")["records"]
+      expect(tags.map { |tag| tag["name"] }).to eq(["fantasy"])
+    end
+  end
+
   describe "update" do
     let(:post_id) do
       client.call_tool("query", resource: "Post", q: { slug_eq: "small-gods" })["records"].first["id"]
@@ -86,6 +140,34 @@ RSpec.describe "the MCP tools" do
       reread = client.call_tool("query", resource: "Post", q: { id_eq: post_id })["records"].first
       expect(reread["title"]).to eq("Hogfather")
       expect(reread["slug"]).to eq("small-gods")
+    end
+
+    it "updates through the resource's own ActiveAdmin update action, so its callbacks run" do
+      client.call_tool("update", resource: "Post", id: post_id, attributes: { title: "Pyramids" })
+
+      reread = client.call_tool("query", resource: "Post", q: { id_eq: post_id })["records"].first
+      expect(reread["body"]).to eq("Unrelated. (revised)")
+    end
+
+    it "reports the model's validation messages and leaves the record alone when the change is rejected" do
+      result = client.call_tool("update", resource: "Post", id: post_id, attributes: { title: "" })
+
+      expect(result["error"]).to match(/validation/i)
+      expect(result["details"]).to include("Title can't be blank")
+
+      reread = client.call_tool("query", resource: "Post", q: { id_eq: post_id })["records"].first
+      expect(reread["title"]).to eq("Small Gods")
+    end
+
+    it "refuses to update a resource that declares no permitted params" do
+      tag_id = client.call_tool("query", resource: "Tag")["records"].first["id"]
+
+      result = client.call_tool("update", resource: "Tag", id: tag_id, attributes: { name: "tampered" })
+
+      expect(result["error"]).to match(/permit_params/)
+
+      reread = client.call_tool("query", resource: "Tag", q: { id_eq: tag_id })["records"].first
+      expect(reread["name"]).to eq("fantasy")
     end
 
     it "refuses a resource that does not register the update action" do
