@@ -48,3 +48,34 @@ file under `spec/e2e/fixture_app/` so the behaviour under test is wrong, watch
 the example fail, then restore it — editing a fixture invalidates the build
 cache, so the next run picks it up. An end-to-end suite that passes regardless
 of what the code does is worse than no suite, because it is believed.
+
+Every example starts from the seeded database: a `before` hook restores it from
+a snapshot taken after migrating and seeding. So examples must not depend on
+what another one left behind, and the suite runs in random order to keep that
+honest. Write each one as though it runs alone, because it might.
+
+### Write e2e descriptions out in full
+
+Give e2e examples and their enclosing blocks descriptions verbose enough that
+the `--format documentation` output reads as a specification of the MCP
+interface on its own, without anyone opening the file. These descriptions are
+the closest thing this project has to a written contract for how the server
+behaves, and they are what someone debugging a CI failure sees first.
+
+State the behaviour and its condition, not the mechanics:
+
+    # Too terse: names a method, not a behaviour.
+    it "filters"
+
+    # Better: someone reading the output learns what the server guarantees.
+    it "filters records with Ransack syntax passed straight through to the model"
+
+    # Too terse: gives no clue why refusing is correct.
+    it "refuses Author"
+
+    # Better: the reason is the point of the example.
+    it "refuses to update a resource registered without the update action"
+
+Prefer a long description to a comment explaining a short one. Favour the
+language of the README and the MCP tools — resources, attributes, permitted
+params, authorization — over the language of the implementation.

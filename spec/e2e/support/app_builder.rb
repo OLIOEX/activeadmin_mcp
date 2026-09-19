@@ -2,6 +2,7 @@ require "bundler"
 require "digest"
 require "fileutils"
 require "open3"
+require "sqlite3"
 
 module E2E
   # Generates a real Rails + ActiveAdmin application with the gem under test
@@ -31,10 +32,15 @@ module E2E
     DATABASE_PATH = "storage/development.sqlite3"
 
     # A copy of the database taken immediately after migrating and seeding.
-    # Restoring it is a file copy; re-seeding is a full Rails boot, so this
-    # is the difference between roughly a second and roughly nothing on
-    # every cached run.
+    # Restoring from it costs milliseconds; re-seeding is a full Rails boot,
+    # which is what makes it affordable to reset between examples.
     DATABASE_SNAPSHOT_PATH = "storage/seeded.sqlite3"
+
+    # Tables holding state created after the snapshot was taken, which a reset
+    # must therefore leave alone. The API token is minted once the server is
+    # up, so restoring this table would revoke it and every subsequent request
+    # would come back 401.
+    SESSION_TABLES = %w[mcp_api_tokens].freeze
 
     ADMIN_EMAIL = "admin@example.com"
     ADMIN_PASSWORD = "password"
@@ -44,6 +50,34 @@ module E2E
     class << self
       def build!
         new.build!
+      end
+
+      def snapshot_exists?
+        File.exist?(File.join(APP_PATH, DATABASE_SNAPSHOT_PATH))
+      end
+
+      # Puts the seeded rows back, table by table, through SQLite itself.
+      #
+      # Copying the snapshot file over the database would be simpler but is
+      # not safe here: the application server holds the database open, and
+      # swapping the file underneath its page cache invites it to read a
+      # mixture of the old and new images. Going through a transaction on the
+      # live connection takes SQLite's locks and leaves every reader
+      # consistent, which is what makes this usable between examples rather
+      # than only between runs.
+      def reset_database!
+        snapshot = File.join(APP_PATH, DATABASE_SNAPSHOT_PATH)
+        raise BuildError, "No database snapshot at #{snapshot}" unless File.exist?(snapshot)
+
+        SQLite3::Database.new(File.join(APP_PATH, DATABASE_PATH)) do |db|
+          db.execute("ATTACH DATABASE ? AS seed", [snapshot])
+
+          begin
+            db.transaction { restore_tables(db) }
+          ensure
+            db.execute("DETACH DATABASE seed")
+          end
+        end
       end
 
       # Runs a command with the gem's own bundler environment stripped out, so
@@ -62,6 +96,19 @@ module E2E
 
         raise BuildError, "Command failed: #{command.join(' ')}\n\n#{output}"
       end
+
+      private
+
+      def restore_tables(db)
+        tables = db.execute(
+          "SELECT name FROM seed.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+        ).flatten - SESSION_TABLES
+
+        tables.each do |table|
+          db.execute("DELETE FROM main.\"#{table}\"")
+          db.execute("INSERT INTO main.\"#{table}\" SELECT * FROM seed.\"#{table}\"")
+        end
+      end
     end
 
     def build!
@@ -74,7 +121,7 @@ module E2E
         # database has to be put back. Fall back to re-seeding when there is
         # no snapshot, which is the case for a cache saved before snapshots
         # existed.
-        restore_database || seed
+        self.class.snapshot_exists? ? self.class.reset_database! : seed
         return APP_PATH
       end
 
@@ -227,20 +274,6 @@ module E2E
     # into the main file and removed it.
     def snapshot_database
       FileUtils.cp(File.join(APP_PATH, DATABASE_PATH), File.join(APP_PATH, DATABASE_SNAPSHOT_PATH))
-    end
-
-    # Returns false when there is nothing to restore, so the caller can seed
-    # instead. Any write-ahead log left behind by a server that did not shut
-    # down cleanly is discarded: replaying it over a restored database would
-    # corrupt it.
-    def restore_database
-      snapshot = File.join(APP_PATH, DATABASE_SNAPSHOT_PATH)
-      return false unless File.exist?(snapshot)
-
-      database = File.join(APP_PATH, DATABASE_PATH)
-      FileUtils.rm_f(["#{database}-wal", "#{database}-shm"])
-      FileUtils.cp(snapshot, database)
-      true
     end
 
     def seed

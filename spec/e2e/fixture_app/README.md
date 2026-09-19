@@ -40,6 +40,7 @@ experiment with: break one deliberately, run the suite, and watch the example
 that covers it fail.
 
 After migrating and seeding, the builder snapshots the SQLite database to
-`storage/seeded.sqlite3` inside the generated application and restores it by
-file copy on subsequent runs, which is why a cached run does not pay for a
-Rails boot to re-seed.
+`storage/seeded.sqlite3` inside the generated application. Restoring from that
+snapshot is a transaction against the live database rather than a Rails boot,
+so the suite can afford to do it before every single example — which is why
+examples here never have to undo their own writes.
