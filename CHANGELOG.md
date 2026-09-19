@@ -9,8 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Breaking:** the minimum supported Ruby is now 4.0. Applications on Ruby 3.x
-  must stay on the previous release until they upgrade. CI and the release
+- **Breaking:** the minimum supported Ruby is now 4.0, Rails 7.2 and
+  ActiveAdmin 3.0. Applications below any of those must stay on the previous
+  release until they upgrade. The Rails and ActiveAdmin floors follow from the
+  Ruby one: Rails 7.2 is the oldest release this gem's end-to-end suite runs
+  on Ruby 4, and ActiveAdmin 2.x does not support Rails 7.2. CI and the release
   workflow now run on Ruby 4.0.7.
 
 ### Security
