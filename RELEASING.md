@@ -8,12 +8,21 @@ Releases are driven by **GitHub Releases**. Publishing a release with a
 `vX.Y.Z` tag triggers `.github/workflows/release.yml`, which:
 
 1. Derives the version from the release tag.
-2. Writes it into `lib/activeadmin_mcp/version.rb`.
-3. Runs the specs, then builds and publishes the gem to RubyGems via OIDC.
-4. Commits the version bump back to the default branch.
+2. Writes it into `lib/activeadmin_mcp/version.rb`, `mcpb/manifest.json` and
+   `mcpb/package.json`.
+3. Runs the specs and the MCPB proxy tests, and packs the Claude Desktop bundle.
+4. Builds and publishes the gem to RubyGems via OIDC.
+5. Uploads `activeadmin-mcp-X.Y.Z.mcpb` as an asset on the release.
+6. Commits the version bumps back to the default branch.
 
 The release tag is the single source of truth for the version — you do not edit
-`version.rb` by hand.
+`version.rb` or the bundle's `version` fields by hand, and the gem and the
+bundle always carry the same version.
+
+The bundle is packed before the gem is pushed, so a broken bundle stops the
+release rather than following a published gem. Uploading the asset uses
+`--clobber`, so re-running the workflow on the same release replaces the asset
+rather than failing.
 
 ## One-time setup (RubyGems side)
 
@@ -48,8 +57,10 @@ regular trusted publisher automatically — no further RubyGems setup is needed.
    notes, and click **Publish release**.
 
 Publishing the release triggers `.github/workflows/release.yml`, which bumps
-`version.rb` to match the tag, runs the specs, publishes the gem to RubyGems via
-OIDC, and commits the version bump back to `main`.
+`version.rb` and the bundle manifests to match the tag, runs the specs,
+publishes the gem to RubyGems via OIDC, attaches the
+`activeadmin-mcp-X.Y.Z.mcpb` bundle to the release, and commits the version
+bumps back to `main`.
 
 > **Branch protection:** the workflow pushes the version-bump commit to the
 > default branch using the built-in `GITHUB_TOKEN`. If `main` requires pull
@@ -64,6 +75,9 @@ To verify the packaged gem without publishing:
 ```bash
 bundle exec rake build   # writes pkg/activeadmin_mcp-<version>.gem
 ```
+
+To verify the Claude Desktop bundle without publishing, see
+[Building the bundle](README.md#building-the-bundle) in the README.
 
 Do **not** run `rake release` locally — publishing happens only through the
 tagged CI workflow.
