@@ -70,6 +70,7 @@ read/query setup without authentication.
 | `list_resources` | List the ActiveAdmin resources the current user may read, along with their attributes. |
 | `query` | Query a resource the current user may read, using Ransack syntax, scoped to the records they may access (`limit` defaults to 25, capped at 100). |
 | `update` | Update an existing record, honouring ActiveAdmin's permitted params and authorization. |
+| *(per action)* | Any ActiveAdmin member, collection or batch action the application has opted in with an `mcp:` option, exposed as its own tool. |
 
 ### Query examples
 
@@ -97,6 +98,94 @@ The `update` tool applies the same rules as the ActiveAdmin UI:
   what that user is allowed to update in admin.
 - **Permitted fields only** — attributes are filtered through the resource's
   `permit_params`; fields the admin form doesn't accept are silently dropped.
+
+### Running member, collection and batch actions
+
+ActiveAdmin actions are **not** exposed by default. An action becomes an MCP
+tool only when you add an `mcp:` option to it:
+
+```ruby
+ActiveAdmin.register Volunteer do
+  member_action :create_warning, method: :post, mcp: {
+    description: "Record a warning against a volunteer",
+    permission: ->(volunteer) { volunteer.active? && can?(:warn, volunteer) },
+    params: {
+      reason:   { type: :string, required: true,
+                  hint: "Short free-text summary shown to the volunteer" },
+      severity: { type: :string, enum: %w[low medium high] },
+      category: { type: :string,
+                  suggestions: -> { WarningCategory.pluck(:name) } }
+    }
+  } do
+    # your existing action body, unchanged
+  end
+end
+```
+
+That registers a `volunteer_create_warning` tool. Batch actions opt in the same
+way, and inherit their param types from the `form:` hash you already declare:
+
+```ruby
+batch_action :suspend, form: { reason: :text },
+                       mcp: { description: "Suspend the selected volunteers" } do |ids, inputs|
+  # ...
+end
+```
+
+**Declaring params**
+
+- `type:` — one of `:string`, `:integer`, `:number`, `:boolean`, `:array`, `:object`.
+- `required:` — refuses the call when the value is missing.
+- `hint:` — static guidance shown to the agent. Always a plain string.
+- `enum:` — **binding**. A value outside the list is refused before dispatch.
+- `suggestions:` — a proc evaluated when tools are listed. **Advisory only**,
+  never enforced, so use it for live values from the database. If it raises,
+  the tool is still listed without suggestions.
+
+On a batch action, every declared param must also appear in the action's `form:`
+hash. ActiveAdmin slices submitted inputs down to the declared `form:` keys
+before calling the block, so a param declared only under `mcp:` would be
+advertised to the client and then dropped; the declaration is refused instead.
+
+**Authorization**
+
+`permission:` is an *additional* gate, never a replacement. Every call first
+passes your ActiveAdmin authorization adapter exactly as `query` and `update`
+do; the proc can only narrow access further, never widen it. It is evaluated in
+controller context, so `current_admin_user`, `can?` and the usual admin helpers
+are available. Return `false` to refuse, or a `String` to refuse with a reason
+the agent can act on.
+
+Tools are also listed per user: an action whose resource the adapter refuses is
+left out of `tools/list` entirely, and a `permission:` proc that takes no
+arguments is evaluated at listing time (in the same controller context) so the
+tool is hidden rather than offered and then refused.
+
+For **batch actions** the adapter check is necessarily resource-level — there is
+no single record to authorize — so it is `authorized?(:<action>, YourModel)`
+rather than a per-record policy evaluation. To stop that being a hole, the ids
+the client submits are run back through the adapter's `scope_collection`, and
+the whole call is refused if any of them falls outside the scope. Nothing is
+narrowed silently: the call either acts on every id you asked for or on none.
+
+One caveat on authentication. Dispatch neutralises the namespace's
+`authentication_method` callback, because the MCP request has already
+authenticated by bearer token and that callback would otherwise redirect to a
+login page. If your `authentication_method` is a *combined* authentication-and-
+authorization method — one that also, say, rejects non-superusers — then
+neutralising it disables that authorization half too. Resource-level
+authorization still runs through the adapter, but the "we only skip
+authentication" framing is not universal; keep authorization in the adapter,
+not in the authentication callback.
+
+**What you get back**
+
+Actions are executed through your real ActiveAdmin controller, so the action's
+`before_action` chain, authorization and callbacks all run. The tool returns the
+response status, the redirect target and any flash messages — not the rendered
+HTML. Redirect-style (submit-side) actions are the supported case; a `GET`
+action that renders a full admin view is best-effort and may fail for want of a
+view context.
 
 ## Connecting a client
 

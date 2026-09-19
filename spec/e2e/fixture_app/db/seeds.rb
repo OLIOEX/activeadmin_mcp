@@ -1,7 +1,9 @@
 # Restorative by design: the e2e suite's `update` examples rewrite a post's
-# title, and the generated application is cached between runs, so seeding has
-# to reset existing rows rather than only create missing ones. Records are
-# keyed on stable natural keys (email, slug) that no example mutates.
+# title, and the MCP action examples rewrite a post's status (directly and via
+# a batch action), and the generated application is cached between runs, so
+# seeding has to reset existing rows rather than only create missing ones.
+# Records are keyed on stable natural keys (email, slug) that no example
+# mutates.
 
 admin_email = ENV.fetch("E2E_ADMIN_EMAIL")
 admin_password = ENV.fetch("E2E_ADMIN_PASSWORD")
@@ -30,6 +32,7 @@ end
   Post.find_or_initialize_by(slug: slug).tap do |post|
     post.title = title
     post.body = body
+    post.status = "draft"
     post.save!
   end
 end

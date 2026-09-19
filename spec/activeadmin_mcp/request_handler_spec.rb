@@ -1,7 +1,23 @@
 require "spec_helper"
+require "support/active_admin"
 
 RSpec.describe ActiveadminMcp::RequestHandler do
   subject(:handler) { described_class.new }
+
+  # A stand-in ActiveAdmin authorization adapter. `scope_collection` mirrors
+  # the real adapters by returning the collection it is handed, so tests can
+  # assert on the relation the handler builds. `calls` records every
+  # authorized? call, so a test can assert on the subject that was checked.
+  def adapter_class(authorized:, calls: [])
+    Class.new do
+      define_method(:initialize) { |*| }
+      define_method(:authorized?) do |action, subject = nil|
+        calls << [action, subject]
+        authorized
+      end
+      def scope_collection(collection, *) = collection
+    end
+  end
 
   def handle(method, params = nil, id: 1)
     request = { "id" => id, "method" => method }
@@ -40,6 +56,8 @@ RSpec.describe ActiveadminMcp::RequestHandler do
     end
 
     describe "tools/list" do
+      before { allow(ActiveadminMcp::ActionCatalog).to receive(:all).and_return([]) }
+
       it "advertises the list_resources, query and update tools" do
         tools = handle("tools/list")[:result][:tools]
 
@@ -76,17 +94,6 @@ RSpec.describe ActiveadminMcp::RequestHandler do
       response = handle("tools/call", { "name" => name, "arguments" => arguments })
       text = response[:result][:content].first[:text]
       JSON.parse(text)
-    end
-
-    # A stand-in ActiveAdmin authorization adapter. `scope_collection` mirrors
-    # the real adapters by returning the collection it is handed, so tests can
-    # assert on the relation the handler builds.
-    def adapter_class(authorized:)
-      Class.new do
-        define_method(:initialize) { |*| }
-        define_method(:authorized?) { |*| authorized }
-        def scope_collection(collection, *) = collection
-      end
     end
 
     def resource_config(authorized: true)
@@ -232,6 +239,191 @@ RSpec.describe ActiveadminMcp::RequestHandler do
     describe "an unknown tool" do
       it "returns an error naming the tool" do
         expect(call_tool("frobnicate")).to eq("error" => "Unknown tool: frobnicate")
+      end
+    end
+  end
+
+  describe "action tools" do
+    let(:resource_class) { Class.new }
+
+    def definition(tool_name: "volunteer_create_warning", permission: nil,
+                   params: { reason: { type: :string, required: true } },
+                   adapter: adapter_class(authorized: true))
+      namespace = double("namespace", authorization_adapter: adapter)
+      double(
+        "definition",
+        tool_name: tool_name,
+        description: "Record a warning",
+        kind: :member,
+        params: params,
+        permission: permission,
+        action_name: :create_warning,
+        resource_name: "Volunteer",
+        config: double("config", namespace: namespace, resource_class: resource_class)
+      )
+    end
+
+    def handle(request, current_user: :admin)
+      ActiveadminMcp::RequestHandler.new(current_user: current_user).handle(request)
+    end
+
+    def tool_names(definitions, current_user: :admin)
+      allow(ActiveadminMcp::ActionCatalog).to receive(:all).and_return(Array(definitions))
+      allow(ActiveadminMcp::ResourceRegistry).to receive(:resources).and_return([])
+
+      handle({ "id" => 1, "method" => "tools/list" }, current_user: current_user)[:result][:tools]
+        .map { |tool| tool[:name] }
+    end
+
+    it "lists opted-in actions alongside the built-in tools" do
+      allow(ActiveadminMcp::ActionCatalog).to receive(:all).and_return([definition])
+      allow(ActiveadminMcp::ResourceRegistry).to receive(:resources).and_return([])
+
+      response = handle({ "id" => 1, "method" => "tools/list" })
+      names = response[:result][:tools].map { |tool| tool[:name] }
+
+      expect(names).to include("volunteer_create_warning")
+      tool = response[:result][:tools].find { |t| t[:name] == "volunteer_create_warning" }
+      expect(tool[:description]).to eq("Record a warning")
+      expect(tool[:inputSchema][:required]).to include("id", "reason")
+    end
+
+    it "routes a call to the action runner" do
+      target = definition
+      allow(ActiveadminMcp::ActionCatalog).to receive(:find).with("volunteer_create_warning").and_return(target)
+
+      runner = instance_double(ActiveadminMcp::ActionRunner, call: { status: 302 })
+      allow(ActiveadminMcp::ActionRunner).to receive(:new)
+        .with(definition: target, current_user: :admin).and_return(runner)
+
+      response = handle({
+        "id" => 2, "method" => "tools/call",
+        "params" => { "name" => "volunteer_create_warning",
+                      "arguments" => { "id" => "1", "reason" => "Late" } }
+      })
+
+      expect(runner).to have_received(:call).with({ "id" => "1", "reason" => "Late" })
+      expect(response[:result][:content].first[:text]).to include("302")
+    end
+
+    it "reports an unknown tool" do
+      allow(ActiveadminMcp::ActionCatalog).to receive(:find).and_return(nil)
+
+      response = handle({
+        "id" => 3, "method" => "tools/call",
+        "params" => { "name" => "nope", "arguments" => {} }
+      })
+
+      expect(response[:result][:content].first[:text]).to include("Unknown tool")
+    end
+
+    describe "authorization at listing time" do
+      it "hides an action tool the authorization adapter refuses" do
+        denied = definition(adapter: adapter_class(authorized: false))
+
+        expect(tool_names(denied)).not_to include("volunteer_create_warning")
+      end
+
+      it "checks the resource class, since there is no record at listing time" do
+        calls = []
+        listed = definition(adapter: adapter_class(authorized: true, calls: calls))
+
+        tool_names(listed)
+
+        expect(calls).to eq([[:create_warning, resource_class]])
+      end
+
+      it "hides only the offending tool when an adapter raises" do
+        exploding = Class.new do
+          define_method(:initialize) { |*| }
+          define_method(:authorized?) { |*| raise "adapter exploded" }
+        end
+        boom = definition(tool_name: "volunteer_boom", adapter: exploding)
+        allow_any_instance_of(described_class).to receive(:warn)
+
+        names = tool_names([boom, definition])
+
+        expect(names).not_to include("volunteer_boom")
+        expect(names).to include("volunteer_create_warning")
+      end
+
+      # The schema is what runs the application's `suggestions:` procs, so it
+      # must never be built for a tool the user is not authorized for. Filtering
+      # an assembled list would be too late: the proc would already have read
+      # the database and handed its rows over.
+      it "never runs a suggestions proc for a user the adapter refuses" do
+        ran = false
+        suggestions = -> { ran = true; %w[secret-category] }
+        denied = definition(
+          adapter: adapter_class(authorized: false),
+          params: { category: { type: :string, suggestions: suggestions } }
+        )
+
+        names = tool_names(denied)
+
+        # Asserted first, deliberately: filtering the assembled list would hide
+        # the tool and still leak, so the proc not running is the real property.
+        expect(ran).to be(false)
+        expect(names).not_to include("volunteer_create_warning")
+      end
+
+      it "does run a suggestions proc for an authorized user" do
+        ran = false
+        suggestions = -> { ran = true; %w[visible-category] }
+        allowed = definition(params: { category: { type: :string, suggestions: suggestions } })
+
+        expect(tool_names(allowed)).to include("volunteer_create_warning")
+        expect(ran).to be(true)
+      end
+    end
+
+    # These need the real ActiveAdmin harness: the point of the fix is that the
+    # proc is instance_exec'd against a real controller, which no double can
+    # stand in for.
+    describe "a permission proc at listing time" do
+      let(:admin) { AdminUser.create!(email: "admin@example.com") }
+
+      after { AdminUser.delete_all }
+
+      def catalog_definition(action_name, kind)
+        ActiveadminMcp::ActionCatalog.all.find do |d|
+          d.action_name == action_name && d.kind == kind
+        end
+      end
+
+      let(:export) { catalog_definition(:export, :collection) }
+
+      it "evaluates a zero-arity proc in controller context" do
+        seen = nil
+        allow(export).to receive(:permission).and_return(-> { seen = current_active_admin_user; true })
+
+        names = tool_names(export, current_user: admin)
+
+        expect(seen).to eq(admin)
+        expect(names).to include("volunteer_export")
+      end
+
+      it "hides the tool when a controller-context proc refuses" do
+        allow(export).to receive(:permission).and_return(-> { current_active_admin_user.nil? })
+
+        expect(tool_names(export, current_user: admin)).not_to include("volunteer_export")
+      end
+
+      it "hides only the raising tool and keeps the rest of the listing" do
+        allow(export).to receive(:permission).and_return(-> { raise "proc exploded" })
+        allow_any_instance_of(described_class).to receive(:warn)
+
+        names = tool_names([export, definition], current_user: admin)
+
+        expect(names).not_to include("volunteer_export")
+        expect(names).to include("volunteer_create_warning", "query")
+      end
+
+      it "leaves a member action's proc for call time" do
+        warning = catalog_definition(:create_warning, :member)
+        allow(warning).to receive(:permission).and_return(->(_record) { false })
+
+        expect(tool_names(warning, current_user: admin)).to include("volunteer_create_warning")
       end
     end
   end

@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- ActiveAdmin `member_action`, `collection_action` and `batch_action`
+  definitions can be exposed as MCP tools by adding an `mcp:` option to them.
+  Actions are opt-in: nothing is exposed without that option. Execution runs
+  through the real ActiveAdmin controller, so `before_action` chains,
+  authorization and callbacks all apply, and an optional `permission:` proc can
+  narrow access further.
+
+  `tools/list` is user-specific: an action is advertised only when the
+  authenticated MCP user passes the resource's authorization adapter, and a
+  zero-argument `permission:` proc is evaluated at listing time in controller
+  context (so `current_admin_user` and `can?` work there as they do at call
+  time). A param's `suggestions:` proc, which runs application code against the
+  database, is never evaluated for a user who is not authorized for the action.
+
+  Batch action calls additionally run the submitted ids through the adapter's
+  `scope_collection` and refuse the entire call if any id falls outside it,
+  rather than silently acting on fewer records than the client asked for.
+
+  A batch action param declared under `mcp:` but missing from the action's
+  ActiveAdmin `form:` hash is now a declaration error. ActiveAdmin slices
+  submitted inputs to the `form:` keys, so such a param was advertised,
+  required and validated, and then silently dropped before the block ran.
+
+  Action failures return a generic error naming the resource and action; the
+  underlying exception message is written to the log instead of being sent to
+  the MCP client, where it could disclose SQL, table names or file paths.
+
 ### Changed
 
 - **Breaking:** the minimum supported Ruby is now 4.0 and the minimum Rails is

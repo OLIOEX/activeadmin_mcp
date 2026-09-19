@@ -2,7 +2,17 @@ require "active_record"
 
 # Spin up an in-memory SQLite database with just the tables the ApiToken
 # model needs. Loaded only by specs that exercise the ActiveRecord model.
-ActiveRecord::Base.establish_connection(adapter: "sqlite3", database: ":memory:")
+#
+# Uses a shared-cache URI rather than a bare ":memory:" database. Both this
+# file and spec/support/active_admin.rb call establish_connection, which
+# replaces ActiveRecord::Base's connection pool wholesale; with two distinct
+# anonymous ":memory:" databases, whichever support file loads last would
+# silently strand the other's tables for the rest of the suite. A shared
+# in-memory database lets both support files add their tables to the same
+# underlying store regardless of load order.
+ActiveRecord::Base.establish_connection(
+  adapter: "sqlite3", database: "file:activeadmin_mcp_test?mode=memory&cache=shared"
+)
 
 ActiveRecord::Schema.verbose = false
 ActiveRecord::Schema.define do

@@ -10,6 +10,16 @@ over HTTP and is mounted at `/mcp` by default. The tools it offers —
 `list_resources`, `query`, `update` — are defined in
 `lib/activeadmin_mcp/request_handler.rb`.
 
+## Ruby version
+
+This gem requires Ruby 4.0 and CI runs 4.0.7. There is no `.ruby-version`, so
+if your shell defaults to an older Ruby every `bundle` command fails with a
+resolution error that does not mention the Ruby version as the cause. Prefix
+commands with the version rather than debugging the symptom:
+
+    RBENV_VERSION=4.0.7 bundle exec rake spec
+    RBENV_VERSION=4.0.7 bundle exec rake e2e
+
 ## Testing MCP actions
 
 **Every MCP action must be covered by an end-to-end test, not only by unit
@@ -53,6 +63,42 @@ Every example starts from the seeded database: a `before` hook restores it from
 a snapshot taken after migrating and seeding. So examples must not depend on
 what another one left behind, and the suite runs in random order to keep that
 honest. Write each one as though it runs alone, because it might.
+
+### Writing an e2e example
+
+`E2E::McpClient` speaks the protocol: `tools_list` returns the `tools/list`
+result, and `call_tool(name, arguments)` unwraps both layers of a tool result
+— the JSON-RPC envelope and the pretty-printed JSON inside the text content
+block — and hands back the payload. A tool that refuses returns a hash with an
+`"error"` key rather than raising, so assert on that key.
+
+**Assert the side effect, not only the response.** An example that checks a
+refusal came back has not shown the action was prevented: the same assertion
+passes whether the call was refused before dispatch or ran and then reported
+an error. Read the record back with `query` and assert it is unchanged. The
+same applies in reverse for a successful call — assert the change landed, not
+merely that no error came back.
+
+**When an example is about which records were affected, assert an untouched
+control record.** A batch example that only checks the selected rows changed
+cannot tell "acted on the ones I asked for" from "acted on everything". Seed
+or pick a record that must not change, and assert it did not.
+
+**Prefer `include` to exact lists when asserting on the tool listing.** The
+fixture application opts actions in to MCP, so the listing legitimately grows
+when someone adds one; `contain_exactly` there turns an unrelated addition
+into a failure in a file that has nothing to do with it.
+
+**Environment variables set for seeding are not set for the running server.**
+The seeds read credentials from the environment, but the application boots as
+a separate process without them. A fixture that needs the seeded admin's
+identity at request time has to hard-code it to match `AppBuilder`, not read
+`ENV`.
+
+Things this suite has caught that the unit specs structurally could not: that
+Rails' forgery protection refuses the synthesized request every non-GET action
+depends on, and that a `permission:` proc evaluated outside controller context
+raises `NameError` and silently hides a tool. Both looked fine against mocks.
 
 ### Write e2e descriptions out in full
 
