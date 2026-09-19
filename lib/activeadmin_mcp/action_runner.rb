@@ -32,6 +32,9 @@ module ActiveadminMcp
 
       dispatcher = ControllerDispatcher.new(config: @definition.config, current_user: @current_user)
 
+      unavailable = display_refusal(dispatcher)
+      return { error: unavailable } if unavailable
+
       refusal = permission_refusal(dispatcher, record, parsed)
       return { error: refusal } if refusal
 
@@ -62,6 +65,24 @@ module ActiveadminMcp
     def authorized?(subject)
       Authorization.for(@definition.config, @current_user)
                    .authorized?(@definition.action_name, subject)
+    end
+
+    # ActiveAdmin's `:if` proc decides whether the admin UI offers a batch
+    # action at all, but ActiveAdmin only consults it when rendering — a
+    # dispatched request reaches the action regardless. Consulting it here too
+    # keeps MCP from becoming the way round a gate the admin enforces by not
+    # offering the button.
+    def display_refusal(dispatcher)
+      block = @definition.display_if
+      return nil unless block
+
+      controller = dispatcher.controller_with_mcp_user
+      return nil if ::MethodOrProcHelper.render_in_context(controller, block)
+
+      "#{@definition.tool_name} is not available to you"
+    rescue StandardError => e
+      warn("[activeadmin_mcp] if: proc for #{@definition.tool_name} raised #{e.class}: #{e.message}")
+      "#{@definition.tool_name} is not available to you"
     end
 
     # Evaluated the way ActiveAdmin evaluates batch action `:if` procs, so

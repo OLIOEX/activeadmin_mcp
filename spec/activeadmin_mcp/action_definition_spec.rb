@@ -9,8 +9,9 @@ RSpec.describe ActiveadminMcp::ActionDefinition do
     double("controller_action", name: name, http_verb: verb, mcp_options: mcp)
   end
 
-  def batch_action(name, mcp:, form: nil)
-    double("batch_action", sym: name, mcp_options: mcp, inputs: form)
+  def batch_action(name, mcp:, form: nil, display_if: nil)
+    double("batch_action", sym: name, mcp_options: mcp, inputs: form,
+                           title: name.to_s.titleize, display_if_block: display_if)
   end
 
   it "returns nil when the action did not opt in" do
@@ -220,5 +221,91 @@ RSpec.describe ActiveadminMcp::ActionDefinition do
     definition = described_class.build(config: build_config, action: action, kind: :member)
 
     expect(definition).to be_valid
+  end
+
+  # An action shared by a concern may need a different tool name on each
+  # resource, and one answering to several verbs needs one tool per verb.
+  describe "naming and verb selection" do
+    def build(mcp, verb: :post)
+      described_class.new(
+        config: build_config,
+        action: member_action(:tag, mcp: mcp, verb: verb),
+        kind: :member,
+        options: mcp
+      )
+    end
+
+    it "uses the tool name the declaration chose, in place of the derived one" do
+      definition = build({ description: "Remove a tag", tool_name: "volunteer_untag" })
+
+      expect(definition.tool_name).to eq("volunteer_untag")
+      expect(definition).to be_valid
+    end
+
+    it "still derives a tool name when the declaration does not choose one" do
+      expect(build({ description: "Tag" }).tool_name).to eq("volunteer_tag")
+    end
+
+    it "rejects a tool name that is not a usable MCP tool name" do
+      definition = build({ description: "Tag", tool_name: "volunteer tag!" })
+
+      expect(definition).not_to be_valid
+      expect(definition.errors.join).to match(/tool_name/)
+    end
+
+    it "dispatches with the verb the declaration chose, when the action answers to several" do
+      definition = build({ description: "Remove a tag", http_verb: :delete }, verb: %i[post delete])
+
+      expect(definition.http_verb).to eq(:delete)
+      expect(definition).to be_valid
+    end
+
+    it "still takes the action's first verb when the declaration does not choose one" do
+      definition = build({ description: "Tag" }, verb: %i[post delete])
+
+      expect(definition.http_verb).to eq(:post)
+    end
+
+    # Dispatching a verb the action never declared would route to nothing, or
+    # worse, to a different branch of the action's own body.
+    it "refuses a verb the action does not answer to" do
+      definition = build({ description: "Tag", http_verb: :put }, verb: %i[post delete])
+
+      expect(definition).not_to be_valid
+      expect(definition.errors.join).to match(/put/)
+    end
+
+    it "ignores a declared verb on a batch action, which ActiveAdmin always posts" do
+      definition = described_class.new(
+        config: build_config,
+        action: batch_action(:tag, mcp: nil),
+        kind: :batch,
+        options: { description: "Tag", http_verb: :delete }
+      )
+
+      expect(definition.http_verb).to eq(:post)
+    end
+  end
+  # ActiveAdmin hides a batch action whose :if proc refuses. Exposing it over
+  # MCP regardless would offer an action the admin UI itself will not show.
+  describe "a batch action guarded by an :if proc" do
+    it "exposes the proc so the caller can evaluate it in controller context" do
+      guard = proc { false }
+      definition = described_class.new(
+        config: build_config, action: batch_action(:purge, mcp: nil, display_if: guard),
+        kind: :batch, options: { description: "Purge" }
+      )
+
+      expect(definition.display_if).to be(guard)
+    end
+
+    it "has nothing to evaluate for a member action, which ActiveAdmin does not gate this way" do
+      definition = described_class.new(
+        config: build_config, action: member_action(:tag, mcp: nil),
+        kind: :member, options: { description: "Tag" }
+      )
+
+      expect(definition.display_if).to be_nil
+    end
   end
 end

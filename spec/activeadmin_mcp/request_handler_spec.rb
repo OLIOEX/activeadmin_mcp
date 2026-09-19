@@ -327,7 +327,7 @@ RSpec.describe ActiveadminMcp::RequestHandler do
   describe "action tools" do
     let(:resource_class) { Class.new }
 
-    def definition(tool_name: "volunteer_create_warning", permission: nil,
+    def definition(tool_name: "volunteer_create_warning", permission: nil, display_if: nil,
                    params: { reason: { type: :string, required: true } },
                    adapter: adapter_class(authorized: true))
       namespace = double("namespace", authorization_adapter: adapter)
@@ -338,6 +338,7 @@ RSpec.describe ActiveadminMcp::RequestHandler do
         kind: :member,
         params: params,
         permission: permission,
+        display_if: display_if,
         action_name: :create_warning,
         resource_name: "Volunteer",
         config: double("config", namespace: namespace, resource_class: resource_class)
@@ -371,7 +372,8 @@ RSpec.describe ActiveadminMcp::RequestHandler do
 
     it "routes a call to the action runner" do
       target = definition
-      allow(ActiveadminMcp::ActionCatalog).to receive(:find).with("volunteer_create_warning").and_return(target)
+      allow(ActiveadminMcp::ActionCatalog).to receive(:find)
+        .with("volunteer_create_warning", current_user: :admin).and_return(target)
 
       runner = instance_double(ActiveadminMcp::ActionRunner, call: { status: 302 })
       allow(ActiveadminMcp::ActionRunner).to receive(:new)
@@ -505,6 +507,44 @@ RSpec.describe ActiveadminMcp::RequestHandler do
         allow(warning).to receive(:permission).and_return(->(_record) { false })
 
         expect(tool_names(warning, current_user: admin)).to include("volunteer_create_warning")
+      end
+    end
+
+    # ActiveAdmin consults a batch action's :if proc only when rendering the
+    # UI, so listing one it refuses would offer a tool the admin itself will
+    # not show.
+    describe "a batch action guarded by ActiveAdmin's own :if proc" do
+      let(:admin) { AdminUser.create!(email: "admin@example.com") }
+      let(:superuser) { AdminUser.create!(email: "superuser@example.com") }
+
+      after { AdminUser.delete_all }
+
+      def purge_for(current_user)
+        ActiveadminMcp::ActionCatalog.all(current_user: current_user)
+                                     .find { |d| d.action_name == :purge && d.kind == :batch }
+      end
+
+      let(:purge) { purge_for(admin) }
+
+      it "hides the tool from a user the proc refuses" do
+        expect(tool_names(purge, current_user: admin)).not_to include("shift_purge")
+      end
+
+      it "lists the tool for a user the proc admits" do
+        expect(tool_names(purge, current_user: superuser)).to include("shift_purge")
+      end
+
+      # Such a proc commonly reads request state — a filter from params — which
+      # a listing has no way to supply.
+      it "hides the tool, and says why, when the proc raises for want of a request it cannot have" do
+        messages = []
+        allow_any_instance_of(described_class).to receive(:warn) { |_, message| messages << message }
+        allow(purge).to receive(:display_if).and_return(proc { params[:q][:type] == "x" })
+
+        names = tool_names(purge, current_user: admin)
+
+        expect(names).not_to include("shift_purge")
+        expect(messages.join).to match(/if: proc/)
       end
     end
   end

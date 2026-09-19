@@ -297,6 +297,83 @@ Redirect-style (submit-side) actions are the supported case; a `GET` action that
 renders a full admin view is best-effort and may fail for want of a view
 context.
 
+### Actions declared somewhere you can't add `mcp:`
+
+An action declared by a shared concern, or by another gem, has no declaration
+you can hang an `mcp:` key on — and if it did, every resource including it
+would get the same description, params and `permission:` proc. Annotate it by
+name from the registration instead, with `mcp_action`:
+
+```ruby
+module Flaggable
+  def self.included(dsl)
+    dsl.send(:member_action, :flag, method: [:post, :delete]) { ... }
+    dsl.send(:batch_action, :flag, form: proc { { reason: :text } }) { |ids, inputs| ... }
+  end
+end
+
+ActiveAdmin.register Volunteer do
+  include Flaggable
+
+  mcp_action :flag, kind: :batch, tool_name: "volunteer_bulk_flag",
+    description: "Flag the selected volunteers",
+    params: { reason: { type: :string, required: true } }
+
+  mcp_action :flag, kind: :member, tool_name: "volunteer_flag",
+    description: "Flag a volunteer",
+    params: { reason: { type: :string, required: true } }
+
+  mcp_action :flag, kind: :member, http_verb: :delete, tool_name: "volunteer_unflag",
+    description: "Remove a volunteer's flag"
+end
+```
+
+`mcp_action` takes everything `mcp:` takes, plus:
+
+| Option | Meaning |
+|--------|---------|
+| `kind:` | `:member`, `:collection` or `:batch`. Optional; needed only when one name belongs to more than one action, which is refused rather than guessed. |
+| `tool_name:` | The MCP tool name, in place of the derived `<resource>_<action>`. |
+| `http_verb:` | Which verb to dispatch, for an action declared with several (`method: [:post, :delete]`). A verb the action does not answer to is a declaration error. |
+
+It **annotates**; it never declares. Naming an action the resource does not
+have warns and skips. It is resolved when the tool list is built, not when it
+is called, so it may appear above or below the `include`.
+
+An annotation **replaces** an inline `mcp:` declaration rather than merging
+into it, so a shared generic declaration and a per-resource one cannot
+half-combine into something neither author wrote.
+
+An action may carry more than one annotation, each producing its own tool —
+which is how an action answering to two verbs, one undoing the other, becomes
+two tools.
+
+**Opting in is still per resource.** Two resources including the same concern
+share the actions, not the exposure: whichever does not annotate exposes
+nothing.
+
+**Names must not collide.** A tool name carries no kind, so a `member_action`
+and a `batch_action` of the same name derive the same one. Rather than let one
+silently shadow the other, both are hidden until a `tool_name:` tells them
+apart.
+
+**Batch actions declared with a String title** — the ones applications generate
+in loops from data — may be annotated by that title, rather than by the symbol
+ActiveAdmin derives from it by titleizing and underscoring, which can carry
+punctuation. The derived tool name has that punctuation squeezed out.
+
+**ActiveAdmin's `:if` proc is honoured.** A batch action the admin UI hides
+because its `:if` refuses is neither listed nor runnable over MCP. ActiveAdmin
+itself consults `:if` only when rendering, so this is stricter than ActiveAdmin
+is — deliberately: MCP should not be the way round a gate the admin enforces by
+not offering the button. A proc that raises, typically because it reads request
+state a tool listing cannot supply, hides the tool and says so in the log.
+
+**A proc `form:` is evaluated** in controller context, the way ActiveAdmin
+evaluates it, so a batch action whose form varies by resource still contributes
+its param types. Like `suggestions:`, this runs application code, and is never
+evaluated for a user the resource's authorization adapter refuses.
+
 ## Connecting a client
 
 `activeadmin_mcp` has been tested with **Claude Code** (Anthropic) over the

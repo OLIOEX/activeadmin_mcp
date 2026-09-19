@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- An `mcp_action` DSL, for exposing actions declared somewhere an `mcp:` key
+  cannot be added — a shared concern, or another gem. The resource annotates
+  the action by name from its own registration, so resources sharing an action
+  can describe it differently, and whichever does not annotate exposes nothing.
+  Annotations are resolved when the tool list is built rather than when they
+  are declared, so they may appear either side of the `include`.
+
+  Alongside `mcp:`'s own options it takes `kind:` (needed only to disambiguate
+  a name belonging to more than one action, which is refused rather than
+  guessed), `tool_name:`, and `http_verb:` (which verb to dispatch for an
+  action declared with several, such as `method: [:post, :delete]`). An action
+  may carry more than one annotation, each producing its own tool. An
+  annotation replaces an inline `mcp:` declaration wholesale rather than
+  merging into it.
+
+  A batch action declared with a String title — the ones applications generate
+  in loops from data — may be annotated by that title, rather than by the
+  symbol ActiveAdmin derives from it, which can carry punctuation.
+
 - A `describe_form` tool, which describes the fields behind a resource's create
   or update form so a client need not guess them from column names. It reads
   the resource's own `form do ... end` block when it declares one — reporting
@@ -70,6 +89,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   digging a build artifact out of the Actions tab.
 
 ### Changed
+
+- A batch action's own ActiveAdmin `:if` proc is now honoured: one the admin UI
+  hides because `:if` refuses is neither listed nor runnable over MCP. This is
+  stricter than ActiveAdmin, which consults `:if` only when rendering and will
+  dispatch such an action regardless — deliberately so, since MCP should not be
+  the way round a gate the admin enforces by not offering the button. A proc
+  that raises, typically because it reads request state a listing cannot
+  supply, hides the tool and says so in the log.
+
+- A batch action whose `form:` is a proc rather than a hash now contributes its
+  param types, by evaluating the proc in controller context exactly as
+  ActiveAdmin does. Previously proc forms were skipped and inherited nothing.
+  Like `suggestions:`, this runs application code, and is never evaluated for a
+  user the resource's authorization adapter refuses.
+
+- Two actions that would be exposed under the same tool name are now both
+  hidden, with a declaration error naming the clash, rather than one silently
+  shadowing the other. A tool name carries no kind, so a `member_action` and a
+  `batch_action` of the same name derived the same one, and only the member one
+  was ever reachable. Give all but one an explicit `tool_name:`.
 
 - **Behaviour change:** `update` now dispatches the resource's real ActiveAdmin
   `update` action instead of calling `record.update` directly. Everything the
