@@ -324,16 +324,20 @@ npx @anthropic-ai/mcpb pack . ../activeadmin-mcp.mcpb
 ```
 
 That writes `activeadmin-mcp.mcpb` (a zip of `manifest.json`, `package.json` and
-`server/index.js`) to the repository root, ready to distribute. Bump `version`
-in **both** `mcpb/manifest.json` and `mcpb/package.json` before packing a
-release — Claude Desktop uses the manifest version to detect upgrades.
+`server/index.js`) to the repository root. You do not bump the bundle's
+`version` by hand: publishing a GitHub Release writes the release tag into
+`mcpb/manifest.json` and `mcpb/package.json`, packs the bundle from that, and
+attaches `activeadmin-mcp-<version>.mcpb` to the release — so the bundle
+version Claude Desktop uses to detect upgrades always matches the gem version.
+See [RELEASING.md](RELEASING.md).
 
-CI packs the bundle on every push and attaches it as a build artifact, so you
-can also download a build from the Actions tab rather than packing it yourself.
+So the bundle for any released version is on that release's page, and CI packs
+the bundle on every push and attaches it as a build artifact if you want an
+unreleased build from the Actions tab.
 
-Distribute the file however suits you: an internal file share, a GitHub release
-asset, or an S3 bucket. Anyone with the file can install it, but it is inert
-without a token.
+Distribute the file however suits you — pointing colleagues at the release
+asset, an internal file share, or an S3 bucket. Anyone with the file can
+install it, but it is inert without a token.
 
 ### Installing
 

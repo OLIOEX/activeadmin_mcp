@@ -1,11 +1,13 @@
 name: Release
 
 # Publishes the gem to RubyGems.org via Trusted Publishing (OIDC) whenever a
-# GitHub Release is published. The release tag (e.g. v0.1.1) is the source of
-# truth for the version: the workflow writes it into lib/activeadmin_mcp/version.rb,
-# builds and publishes the gem, then commits the version bump back to the
-# default branch. No API key is stored — RubyGems verifies this workflow via
-# OIDC. See RELEASING.md for the one-time RubyGems setup.
+# GitHub Release is published, and attaches the Claude Desktop bundle to the
+# release. The release tag (e.g. v0.1.1) is the source of truth for the
+# version: the workflow writes it into lib/activeadmin_mcp/version.rb,
+# mcpb/manifest.json and mcpb/package.json, publishes the gem, uploads
+# activeadmin-mcp-<version>.mcpb as a release asset, then commits the version
+# bumps back to the default branch. No API key is stored — RubyGems verifies
+# this workflow via OIDC. See RELEASING.md for the one-time RubyGems setup.
 
 on:
   release:
@@ -19,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: rubygems
     permissions:
-      contents: write   # commit the version bump back to the default branch
+      contents: write   # upload the release asset, commit the version bumps back
       id-token: write   # exchange the OIDC token with RubyGems
 
     steps:
@@ -45,14 +47,34 @@ jobs:
           ruby-version: "4.0.7"
           bundler-cache: true
 
-      - name: Write version file
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Write version files
         run: |
           version="${{ steps.version.outputs.version }}"
           sed -i -E "s/VERSION = \".*\"/VERSION = \"${version}\"/" lib/activeadmin_mcp/version.rb
           grep -q "VERSION = \"${version}\"" lib/activeadmin_mcp/version.rb
+          # The leading quote in the pattern keeps this off "manifest_version".
+          for json in mcpb/manifest.json mcpb/package.json; do
+            sed -i -E "s/^(\s*)\"version\": \".*\",$/\\1\"version\": \"${version}\",/" "$json"
+            grep -q "\"version\": \"${version}\"," "$json"
+          done
 
       - name: Run specs
         run: bundle exec rspec
+
+      - name: Run proxy tests
+        run: npm test
+        working-directory: mcpb
+
+      - name: Pack the bundle
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          npx --yes @anthropic-ai/mcpb pack . "../activeadmin-mcp-${version}.mcpb"
+        working-directory: mcpb
 
       - name: Configure RubyGems credentials (OIDC)
         uses: rubygems/configure-rubygems-credentials@v2.1.0
@@ -63,15 +85,24 @@ jobs:
           gem build activeadmin_mcp.gemspec
           gem push "activeadmin_mcp-${version}.gem"
 
-      - name: Commit version bump to default branch
+      - name: Attach the bundle to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           version="${{ steps.version.outputs.version }}"
-          if git diff --quiet -- lib/activeadmin_mcp/version.rb; then
-            echo "version.rb already at ${version}; nothing to commit."
+          gh release upload "${{ github.event.release.tag_name }}" \
+            "activeadmin-mcp-${version}.mcpb" --clobber
+
+      - name: Commit version bumps to default branch
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          versioned_files="lib/activeadmin_mcp/version.rb mcpb/manifest.json mcpb/package.json"
+          if git diff --quiet -- $versioned_files; then
+            echo "version files already at ${version}; nothing to commit."
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add lib/activeadmin_mcp/version.rb
+            git add $versioned_files
             git commit -m "Bump version to ${version}"
             git push origin "HEAD:${{ github.event.repository.default_branch }}"
           fi
