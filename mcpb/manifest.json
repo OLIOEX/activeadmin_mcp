@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "activeadmin-mcp",
   "display_name": "ActiveAdmin MCP",
-  "version": "0.0.3",
+  "version": "0.1.0",
   "description": "Query and update your ActiveAdmin data from Claude Desktop.",
   "long_description": "Connects Claude Desktop to an application running the activeadmin_mcp Rails engine.\n\nThe tools available mirror the ActiveAdmin resources your account can already see: listing resources, querying them with Ransack syntax, and updating records through the same permitted parameters and authorisation rules as the admin UI. Nothing is exposed that you could not do yourself while signed in to the admin panel.\n\nAuthentication uses an API token you generate from the MCP Tokens page in your admin panel, and can be revoked there at any time.",
   "author": {

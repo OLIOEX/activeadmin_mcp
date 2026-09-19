@@ -77,43 +77,57 @@ read/query setup without authentication.
 | `describe_form` | Describe the fields of a resource's form — input types, labels, hints, allowed values, column types and which are required — so a `create` or `update` call need not guess them. |
 | *(per action)* | Any ActiveAdmin member, collection or batch action the application has opted in with an `mcp:` option, exposed as its own tool. |
 
+The examples below are drawn from the application the end-to-end suite builds
+and drives over HTTP, which is checked in under
+[`spec/e2e/fixture_app/`](spec/e2e/fixture_app/): `Post` permits `title` and
+`body` but not `slug`, `Author` is registered `actions :index, :show`, `Review`
+declares its own form block, and `Tag` declares no `permit_params` at all. Most
+of what this README claims is asserted against that running application in
+[`spec/e2e/`](spec/e2e/), so a claim here can be read next to the example that
+exercises it.
+
 ### Query examples
 
 ```
-Query users whose email contains "example.com"
-→ query(resource: "User", q: { email_cont: "example.com" })
+Find the post whose title mentions Earthsea
+→ query(resource: "Post", q: { title_cont: "Earthsea" })
 
-Find active posts created since the start of the month
-→ query(resource: "Post", q: { status_eq: "active", created_at_gt: "2026-08-01" })
+Find draft posts created since the start of the month
+→ query(resource: "Post", q: { status_eq: "draft", created_at_gt: "2026-08-01" })
+
+Look an author up by email
+→ query(resource: "Author", q: { email_eq: "ursula@example.com" })
 ```
 
 ### Creating and updating records
 
 ```
-Create a user
-→ create(resource: "User", attributes: { name: "Ada", email: "ada@example.com" })
+Create a post
+→ create(resource: "Post", attributes: { title: "Mort", body: "The fourth." })
 
-Update a user's name
-→ update(resource: "User", id: 42, attributes: { name: "New name" })
+Retitle a post
+→ update(resource: "Post", id: 42, attributes: { title: "Pyramids" })
 ```
 
 Both tools dispatch the resource's own ActiveAdmin `create` or `update`
 action, so a write from MCP is the same write the admin UI makes:
 
 - **Registered actions only** — resources registered without the action
-  (e.g. `actions :index, :show`) are refused.
+  (e.g. `Author`, registered `actions :index, :show`) are refused.
 - **Authorization** — the write runs through the resource namespace's
   authorization adapter for the authenticated MCP user, both before dispatch
   and again inside the controller, so it can only write what that user is
   allowed to write in admin.
 - **Permitted fields only** — attributes are filtered through the resource's
-  `permit_params`; fields the admin form doesn't accept are silently dropped.
-  A resource that declares no `permit_params` at all is refused outright, with
-  a message saying so — ActiveAdmin cannot write such a resource through its
-  own forms either.
+  `permit_params`; fields the admin form doesn't accept are silently dropped,
+  so a `slug` sent to a `Post` permitting only `title` and `body` never
+  reaches the record. A resource that declares no `permit_params` at all (like
+  `Tag`) is refused outright, with a message saying so — ActiveAdmin cannot
+  write such a resource through its own forms either.
 - **Your callbacks run** — ActiveAdmin's `before_build`, `before_create`,
   `before_save`, `after_update` and friends all fire, because the controller
-  action is what fires them.
+  action is what fires them. A `before_create` that fills in a `slug` the form
+  never accepted still fills it in.
 
 A write rejected by the model comes back as a `Validation failed` error with
 the model's own messages in `details`, and nothing is written.
@@ -121,14 +135,19 @@ the model's own messages in `details`, and nothing is written.
 ### Describing a form
 
 ```
+What can I set when writing a review?
+→ describe_form(resource: "Review")          # source: "form"
+
 What can I set when creating a post?
-→ describe_form(resource: "Post")
+→ describe_form(resource: "Post")            # source: "permit_params"
 → describe_form(resource: "Post", action: "edit")
 ```
 
 `describe_form` reads the resource's own `form do ... end` block when it
 declares one, reporting each input's `as:`, `label:`, `hint:` and — when the
-`collection:` is a literal array — its allowed values. Resources that declare
+`collection:` is a literal array — its allowed values. `Review` declares one,
+so its `status` comes back as a `select` labelled "Moderation status" with
+`["pending", "approved"]` as its allowed values. Resources that declare
 no form block get a description derived from their `permit_params` instead:
 ActiveAdmin renders a bare `f.inputs` for those, which Formtastic only expands
 at render time, so there is nothing to read. The response's `source` says which
@@ -142,7 +161,8 @@ reported under `nested` rather than flattened in with the record's own fields.
 both. `"new"` (the default) requires the resource to register `create` and pass
 `create` authorization; `"edit"` requires `update`. Describing a form you could
 never submit tells you nothing you can act on, so it is refused with the same
-messages `create` and `update` use.
+messages `create` and `update` use: `Author` is not creatable, and `Tag`
+declares no permitted params.
 
 Two limits worth knowing:
 
@@ -161,32 +181,41 @@ ActiveAdmin actions are **not** exposed by default. An action becomes an MCP
 tool only when you add an `mcp:` option to it:
 
 ```ruby
-ActiveAdmin.register Volunteer do
-  member_action :create_warning, method: :post, mcp: {
-    description: "Record a warning against a volunteer",
-    permission: ->(volunteer) { volunteer.active? && can?(:warn, volunteer) },
+ActiveAdmin.register Post do
+  member_action :publish, method: :post, mcp: {
+    description: "Publish a post with the given visibility",
     params: {
-      reason:   { type: :string, required: true,
-                  hint: "Short free-text summary shown to the volunteer" },
-      severity: { type: :string, enum: %w[low medium high] },
-      category: { type: :string,
-                  suggestions: -> { WarningCategory.pluck(:name) } }
+      visibility: { type: :string, required: true,
+                    enum: %w[public unlisted],
+                    hint: "Who can see the post once published" }
     }
   } do
-    # your existing action body, unchanged
+    # your existing action body, unchanged by opting in
+    resource.update!(status: params[:visibility])
+    redirect_to resource_path(resource), notice: "Published"
+  end
+
+  # No mcp: key, so this one is not a tool — not listed, and refused by name.
+  member_action :archive, method: :post do
+    resource.update!(status: "archived")
+    redirect_to resource_path(resource), notice: "Archived"
   end
 end
 ```
 
-That registers a `volunteer_create_warning` tool. Batch actions opt in the same
-way, and inherit their param types from the `form:` hash you already declare:
+That registers a `post_publish` tool, and no `post_archive` tool. Batch actions
+opt in the same way, and inherit their param types from the `form:` hash you
+already declare:
 
 ```ruby
-batch_action :suspend, form: { reason: :text },
-                       mcp: { description: "Suspend the selected volunteers" } do |ids, inputs|
-  # ...
+batch_action :set_status, form: { status: :text },
+                          mcp: { description: "Set the status on the selected posts" } do |ids, inputs|
+  Post.where(id: ids).update_all(status: inputs["status"])
 end
 ```
+
+That registers a `post_set_status` tool taking an `ids` array alongside the
+`status` string it took from `form:`.
 
 **Declaring params**
 
@@ -194,9 +223,10 @@ end
 - `required:` — refuses the call when the value is missing.
 - `hint:` — static guidance shown to the agent. Always a plain string.
 - `enum:` — **binding**. A value outside the list is refused before dispatch.
-- `suggestions:` — a proc evaluated when tools are listed. **Advisory only**,
-  never enforced, so use it for live values from the database. If it raises,
-  the tool is still listed without suggestions.
+- `suggestions:` — a proc evaluated when tools are listed, e.g.
+  `suggestions: -> { Post.distinct.pluck(:status) }`. **Advisory only**, never
+  enforced, so use it for live values from the database. If it raises, the tool
+  is still listed without suggestions.
 
 On a batch action, every declared param must also appear in the action's `form:`
 hash. ActiveAdmin slices submitted inputs down to the declared `form:` keys
@@ -212,10 +242,30 @@ controller context, so `current_admin_user`, `can?` and the usual admin helpers
 are available. Return `false` to refuse, or a `String` to refuse with a reason
 the agent can act on.
 
+```ruby
+# Takes the record, so it can only be resolved when the call arrives.
+member_action :feature, method: :post, mcp: {
+  description: "Feature a published post on the front page",
+  permission: ->(post) { post.status == "draft" ? "Only a published post can be featured" : true }
+} do
+  resource.update!(status: "featured")
+end
+
+# Takes no arguments, so it is resolved when tools are listed.
+collection_action :purge_drafts, method: :post, mcp: {
+  description: "Purge every draft post",
+  permission: -> { current_admin_user&.editor? }
+} do
+  redirect_to collection_path, notice: "Purged"
+end
+```
+
 Tools are also listed per user: an action whose resource the adapter refuses is
 left out of `tools/list` entirely, and a `permission:` proc that takes no
 arguments is evaluated at listing time (in the same controller context) so the
-tool is hidden rather than offered and then refused.
+tool is hidden rather than offered and then refused. A proc that takes the
+record cannot be resolved without one, so `post_feature` stays advertised and
+refuses at call time with the string the proc returned.
 
 For **batch actions** the adapter check is necessarily resource-level — there is
 no single record to authorize — so it is `authorized?(:<action>, YourModel)`
@@ -239,9 +289,13 @@ not in the authentication callback.
 Actions are executed through your real ActiveAdmin controller, so the action's
 `before_action` chain, authorization and callbacks all run. The tool returns the
 response status, the redirect target and any flash messages — not the rendered
-HTML. Redirect-style (submit-side) actions are the supported case; a `GET`
-action that renders a full admin view is best-effort and may fail for want of a
-view context.
+HTML. An action whose body raises comes back as a generic `Post#publish failed`
+naming the resource and action, with the exception's own message — which can
+carry SQL, table names and file paths — kept away from the client.
+
+Redirect-style (submit-side) actions are the supported case; a `GET` action that
+renders a full admin view is best-effort and may fail for want of a view
+context.
 
 ### Actions declared somewhere you can't add `mcp:`
 
@@ -514,7 +568,10 @@ installed bundle simply starts reporting an authentication failure.
 ## Configuration
 
 The generator writes an initializer to
-`config/initializers/activeadmin_mcp.rb`:
+`config/initializers/activeadmin_mcp.rb` carrying every option below,
+commented out. Running it with `--auth devise_token` uncomments the
+authentication method for you, so the first edit is usually just naming your
+Devise model:
 
 ```ruby
 ActiveadminMcp.configure do |config|
@@ -591,6 +648,14 @@ This generates a real Rails 7.2 + ActiveAdmin + Devise application under
 and drives it over real HTTP with a minimal JSON-RPC client — the same way
 Claude Code or any other MCP client would. It's how the gem is tested
 against ActiveAdmin's and Ransack's actual behaviour rather than mocks.
+
+The registrations, models, migrations and seeds that application uses are
+checked in under [`spec/e2e/fixture_app/`](spec/e2e/fixture_app/) rather than
+written from heredocs, and they are the `Post`, `Author`, `Review` and `Tag`
+this README's examples are written against — so a claim above can be read next
+to both the registration it describes and the example that exercises it.
+[`spec/e2e/fixture_app/README.md`](spec/e2e/fixture_app/README.md) says which
+claim each fixture exists to support.
 
 The generated application is expensive to build (a full `bundle install`
 against rubygems.org, and a `gem install rails` if Rails 7.2.2.2 isn't
