@@ -115,6 +115,25 @@ module ActiveadminMcp
           },
         },
         {
+          name: "describe_form",
+          description: "Describe the fields of a resource's ActiveAdmin form — their input " \
+                       "types, labels, hints, allowed values, column types and which are " \
+                       "required — so a create or update call need not guess them.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              resource: { type: "string", description: "Resource name (e.g., 'User', 'Post')" },
+              action: {
+                type: "string",
+                enum: %w[new edit],
+                description: "Which form to describe: 'new' for creating, 'edit' for updating " \
+                             "(default: 'new')",
+              },
+            },
+            required: ["resource"],
+          },
+        },
+        {
           name: "create",
           description: "Create a new record. The write runs through the resource's real " \
                        "ActiveAdmin create action, so only fields its permit_params accepts " \
@@ -153,6 +172,7 @@ module ActiveadminMcp
       result = case name
                when "list_resources" then tool_list_resources
                when "query" then tool_query(args)
+               when "describe_form" then tool_describe_form(args)
                when "create" then tool_create(args)
                when "update" then tool_update(args)
                else tool_action(name, args)
@@ -184,6 +204,14 @@ module ActiveadminMcp
       relation = resource[:model].ransack(q).result
       records = authorization(resource).scope_collection(relation, Authorization::READ).limit(limit)
       { resource: resource[:name], count: records.size, records: filter_sensitive(records.as_json) }
+    end
+
+    def tool_describe_form(args)
+      resource = ResourceRegistry.find(args["resource"])
+      return { error: "Resource not found: #{args['resource']}" } unless resource
+
+      FormDescription.new(resource: resource, current_user: @current_user)
+                     .call(action: args["action"] || "new")
     end
 
     def tool_create(args)

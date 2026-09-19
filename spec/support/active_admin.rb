@@ -33,6 +33,17 @@ ActiveRecord::Schema.define do
   # is refused for a resource that never declared what may be written.
   create_table :sightings, force: true do |t|
     t.string :species
+    t.references :shift
+    t.timestamps
+  end
+
+  # Registered with an explicit `form do ... end` block, so a spec can prove a
+  # description is read from the form a resource declares rather than derived
+  # from its permitted params.
+  create_table :shifts, force: true do |t|
+    t.string :name
+    t.string :location
+    t.datetime :starts_at
     t.timestamps
   end
 
@@ -46,6 +57,11 @@ class Volunteer < ActiveRecord::Base
   validates :name, presence: true
 end
 class Note < ActiveRecord::Base; end
+class Shift < ActiveRecord::Base
+  has_many :sightings
+  accepts_nested_attributes_for :sightings
+  validates :name, presence: true
+end
 class Sighting < ActiveRecord::Base; end
 class AdminUser < ActiveRecord::Base; end
 
@@ -114,6 +130,22 @@ ActiveAdmin.register Volunteer do
                          mcp: { description: "Suspend the selected volunteers" } do |ids, inputs|
     Volunteer.where(id: ids).update_all(name: "Suspended: #{inputs[:reason]}")
     redirect_to collection_path, notice: "#{ids.size} suspended: #{inputs[:reason]}"
+  end
+end
+
+ActiveAdmin.register Shift do
+  permit_params :name, :location, :starts_at
+
+  form do |f|
+    f.inputs "Shift" do
+      f.input :name, hint: "How the shift appears on the rota"
+      f.input :location, as: :select, collection: %w[kitchen warehouse]
+      f.input :starts_at, as: :datetime_select, label: "Starts"
+    end
+    f.has_many :sightings do |sighting|
+      sighting.input :species
+    end
+    f.actions
   end
 end
 

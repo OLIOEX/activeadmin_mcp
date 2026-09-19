@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A `describe_form` tool, which describes the fields behind a resource's create
+  or update form so a client need not guess them from column names. It reads
+  the resource's own `form do ... end` block when it declares one — reporting
+  each input's `as:`, `label:`, `hint:`, and its allowed values when the
+  `collection:` is a literal array — and otherwise derives the description from
+  the resource's `permit_params`, which is what `create` and `update` enforce
+  anyway. The response says which of the two it used. Every field is annotated
+  from the model with its column type and whether the model validates its
+  presence, and `has_many` groups are reported as nested rather than flattened
+  into the record's own fields.
+
+  `action:` selects the gate rather than the shape, since ActiveAdmin uses one
+  form block for both: `"new"` requires the resource to register `create` and
+  pass `create` authorization, `"edit"` requires `update`. A form the user
+  could never submit is refused with the same messages `create` and `update`
+  give.
+
+  A `collection:` that is a relation or a proc is omitted rather than
+  evaluated: describing a form should not fire a query, and a relation can be
+  arbitrarily large.
+
 - A `create` tool, which creates a record by dispatching the resource's own
   ActiveAdmin `create` action. Resources registered without that action are
   refused, `permit_params` decides what may be written, the namespace's

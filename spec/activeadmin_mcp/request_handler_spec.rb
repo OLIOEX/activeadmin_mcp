@@ -58,10 +58,11 @@ RSpec.describe ActiveadminMcp::RequestHandler do
     describe "tools/list" do
       before { allow(ActiveadminMcp::ActionCatalog).to receive(:all).and_return([]) }
 
-      it "advertises the list_resources, query, create and update tools" do
+      it "advertises the list_resources, query, create, update and describe_form tools" do
         tools = handle("tools/list")[:result][:tools]
 
-        expect(tools.map { |t| t[:name] }).to contain_exactly("list_resources", "query", "create", "update")
+        expect(tools.map { |t| t[:name] })
+          .to contain_exactly("list_resources", "query", "create", "update", "describe_form")
       end
 
       it "marks resource as required on the query tool" do
@@ -76,6 +77,14 @@ RSpec.describe ActiveadminMcp::RequestHandler do
         update = tools.find { |t| t[:name] == "update" }
 
         expect(update[:inputSchema][:required]).to contain_exactly("resource", "id", "attributes")
+      end
+
+      it "requires only resource on the describe_form tool, since the action defaults" do
+        tools = handle("tools/list")[:result][:tools]
+        describe_form = tools.find { |t| t[:name] == "describe_form" }
+
+        expect(describe_form[:inputSchema][:required]).to eq(["resource"])
+        expect(describe_form[:inputSchema][:properties][:action][:enum]).to eq(%w[new edit])
       end
 
       it "requires resource and attributes on the create tool" do
@@ -271,6 +280,40 @@ RSpec.describe ActiveadminMcp::RequestHandler do
           .with(resource: resource, current_user: :admin)
         expect(writer).to have_received(:create).with(attributes: { "name" => "x" })
         expect(result).to eq("id" => 7)
+      end
+    end
+
+    describe "describe_form" do
+      it "returns an error when the resource is not found" do
+        allow(ActiveadminMcp::ResourceRegistry).to receive(:find).with("Ghost").and_return(nil)
+
+        expect(call_tool("describe_form", "resource" => "Ghost"))
+          .to eq("error" => "Resource not found: Ghost")
+      end
+
+      it "delegates to the form description with the resource and current user" do
+        resource = { name: "User", model: double, config: double }
+        allow(ActiveadminMcp::ResourceRegistry).to receive(:find).with("User").and_return(resource)
+        description = instance_double(ActiveadminMcp::FormDescription, call: { source: "form" })
+        allow(ActiveadminMcp::FormDescription).to receive(:new).and_return(description)
+
+        result = call_tool_as(:admin, "describe_form", "resource" => "User", "action" => "edit")
+
+        expect(ActiveadminMcp::FormDescription).to have_received(:new)
+          .with(resource: resource, current_user: :admin)
+        expect(description).to have_received(:call).with(action: "edit")
+        expect(result).to eq("source" => "form")
+      end
+
+      it "describes the new form when no action is given" do
+        resource = { name: "User", model: double, config: double }
+        allow(ActiveadminMcp::ResourceRegistry).to receive(:find).with("User").and_return(resource)
+        description = instance_double(ActiveadminMcp::FormDescription, call: {})
+        allow(ActiveadminMcp::FormDescription).to receive(:new).and_return(description)
+
+        call_tool("describe_form", "resource" => "User")
+
+        expect(description).to have_received(:call).with(action: "new")
       end
     end
 

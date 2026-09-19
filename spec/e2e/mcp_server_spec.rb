@@ -12,10 +12,10 @@ RSpec.describe "the MCP server" do
       expect(result["capabilities"]).to have_key("tools")
     end
 
-    it "advertises the four built-in tools, alongside whatever the fixture app has opted in to MCP" do
+    it "advertises the five built-in tools, alongside whatever the fixture app has opted in to MCP" do
       names = client.tools_list["tools"].map { |tool| tool["name"] }
 
-      expect(names).to include("list_resources", "query", "create", "update")
+      expect(names).to include("list_resources", "query", "create", "update", "describe_form")
     end
   end
 
