@@ -3,6 +3,14 @@
 ActiveAdmin.register Post do
   permit_params :title, :body
 
+  # These ActiveAdmin callbacks fire only when the create or update action runs
+  # through the real controller, so the e2e suite can read their effects to
+  # prove an MCP write is dispatched rather than written straight to the model.
+  # `slug` is deliberately outside `permit_params`, so a created post can only
+  # get one from this callback.
+  before_create { |post| post.slug = post.title.to_s.parameterize if post.slug.blank? }
+  before_update { |post| post.body = "#{post.body} (revised)" }
+
   # Opted in via `mcp:`, with a required `visibility` param bound to a static
   # enum, so the e2e suite can prove an out-of-enum value is refused before
   # dispatch, and that a permitted value actually runs against the real

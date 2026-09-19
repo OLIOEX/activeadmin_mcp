@@ -115,9 +115,24 @@ module ActiveadminMcp
           },
         },
         {
+          name: "create",
+          description: "Create a new record. The write runs through the resource's real " \
+                       "ActiveAdmin create action, so only fields its permit_params accepts " \
+                       "are written and its callbacks and authorization all apply.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              resource: { type: "string", description: "Resource name (e.g., 'User', 'Post')" },
+              attributes: { type: "object", description: "Attributes for the new record (e.g., {name: 'Ada'})" },
+            },
+            required: %w[resource attributes],
+          },
+        },
+        {
           name: "update",
-          description: "Update an existing record. Only fields the resource's ActiveAdmin " \
-                       "form permits are written, and the update respects ActiveAdmin authorization.",
+          description: "Update an existing record. The write runs through the resource's real " \
+                       "ActiveAdmin update action, so only fields its permit_params accepts " \
+                       "are written and its callbacks and authorization all apply.",
           inputSchema: {
             type: "object",
             properties: {
@@ -138,6 +153,7 @@ module ActiveadminMcp
       result = case name
                when "list_resources" then tool_list_resources
                when "query" then tool_query(args)
+               when "create" then tool_create(args)
                when "update" then tool_update(args)
                else tool_action(name, args)
                end
@@ -170,6 +186,16 @@ module ActiveadminMcp
       { resource: resource[:name], count: records.size, records: filter_sensitive(records.as_json) }
     end
 
+    def tool_create(args)
+      resource = ResourceRegistry.find(args["resource"])
+      return { error: "Resource not found: #{args['resource']}" } unless resource
+
+      attributes = args["attributes"] || {}
+      return { error: "attributes are required" } if attributes.empty?
+
+      RecordWriter.new(resource: resource, current_user: @current_user).create(attributes: attributes)
+    end
+
     def tool_update(args)
       resource = ResourceRegistry.find(args["resource"])
       return { error: "Resource not found: #{args['resource']}" } unless resource
@@ -178,8 +204,8 @@ module ActiveadminMcp
       attributes = args["attributes"] || {}
       return { error: "attributes are required" } if attributes.empty?
 
-      RecordUpdater.new(resource: resource, current_user: @current_user)
-                   .call(id: args["id"], attributes: attributes)
+      RecordWriter.new(resource: resource, current_user: @current_user)
+                  .update(id: args["id"], attributes: attributes)
     end
 
     def authorized_to_read?(resource)

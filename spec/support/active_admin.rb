@@ -22,13 +22,31 @@ ActiveRecord::Schema.define do
     t.timestamps
   end
 
+  # Registered read-only, so a spec can prove a write is refused for a
+  # resource whose ActiveAdmin registration does not expose the action.
+  create_table :notes, force: true do |t|
+    t.string :body
+    t.timestamps
+  end
+
+  # Registered writable but WITHOUT permit_params, so a spec can prove a write
+  # is refused for a resource that never declared what may be written.
+  create_table :sightings, force: true do |t|
+    t.string :species
+    t.timestamps
+  end
+
   create_table :admin_users, force: true do |t|
     t.string :email
     t.timestamps
   end
 end
 
-class Volunteer < ActiveRecord::Base; end
+class Volunteer < ActiveRecord::Base
+  validates :name, presence: true
+end
+class Note < ActiveRecord::Base; end
+class Sighting < ActiveRecord::Base; end
 class AdminUser < ActiveRecord::Base; end
 
 require "active_admin"
@@ -67,7 +85,14 @@ ActiveAdmin.application.load!
 ActiveAdmin.application.namespaces[:admin].batch_actions = true
 
 ActiveAdmin.register Volunteer do
-  actions :index, :show, :edit, :update
+  actions :index, :show, :new, :create, :edit, :update
+
+  permit_params :name, :active
+
+  # An ActiveAdmin callback fires only when the create or update action runs
+  # through the real controller, so a spec can use the trimmed name to prove a
+  # write was dispatched rather than written straight to the model.
+  before_save { |volunteer| volunteer.name = volunteer.name.to_s.strip }
 
   member_action :create_warning, method: :post, mcp: {
     description: "Record a warning against a volunteer",
@@ -89,6 +114,23 @@ ActiveAdmin.register Volunteer do
                          mcp: { description: "Suspend the selected volunteers" } do |ids, inputs|
     Volunteer.where(id: ids).update_all(name: "Suspended: #{inputs[:reason]}")
     redirect_to collection_path, notice: "#{ids.size} suspended: #{inputs[:reason]}"
+  end
+end
+
+ActiveAdmin.register Note do
+  actions :index, :show
+end
+
+ActiveAdmin.register Sighting do
+end
+
+# An authorization adapter that denies everything, used to prove that
+# neutralising the namespace's authentication_method (see
+# ControllerDispatcher#controller_with_mcp_user) does not also neutralise
+# authorization, which must keep running in full.
+class DenyingAuthorizationAdapter < ActiveAdmin::AuthorizationAdapter
+  def authorized?(_action, _subject = nil)
+    false
   end
 end
 

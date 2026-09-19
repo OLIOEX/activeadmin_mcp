@@ -32,10 +32,12 @@ The server is a Rails engine mounted inside your application (by default at
   `scope_collection`, so the MCP user only ever sees the records they could see
   in the admin UI. With ActiveAdmin's default adapter every check passes, so
   applications without an authorization adapter are unaffected.
-- **Writes go through ActiveAdmin.** The `update` tool only writes fields
-  allowed by the resource's `permit_params`, refuses resources that don't
-  register the `update` action, and runs every change through your
-  authorization adapter as the authenticated MCP user.
+- **Writes go through ActiveAdmin.** The `create` and `update` tools dispatch
+  the resource's real ActiveAdmin controller action, so `permit_params`, your
+  `before_save`/`after_update` callbacks, the controller's `before_action`
+  chain and your authorization adapter all apply exactly as they do when
+  someone clicks Save in the admin UI. Resources that don't register the
+  action are refused.
 - **Authentication is optional but built in.** Enable Bearer-token auth and the
   installer adds an "MCP Tokens" management page to your ActiveAdmin panel.
 
@@ -69,7 +71,8 @@ read/query setup without authentication.
 |------|-------------|
 | `list_resources` | List the ActiveAdmin resources the current user may read, along with their attributes. |
 | `query` | Query a resource the current user may read, using Ransack syntax, scoped to the records they may access (`limit` defaults to 25, capped at 100). |
-| `update` | Update an existing record, honouring ActiveAdmin's permitted params and authorization. |
+| `create` | Create a new record through the resource's ActiveAdmin create action, honouring its permitted params, callbacks and authorization. |
+| `update` | Update an existing record through the resource's ActiveAdmin update action, honouring its permitted params, callbacks and authorization. |
 | *(per action)* | Any ActiveAdmin member, collection or batch action the application has opted in with an `mcp:` option, exposed as its own tool. |
 
 ### Query examples
@@ -82,22 +85,36 @@ Find active posts created since the start of the month
 → query(resource: "Post", q: { status_eq: "active", created_at_gt: "2026-08-01" })
 ```
 
-### Updating records
+### Creating and updating records
 
 ```
+Create a user
+→ create(resource: "User", attributes: { name: "Ada", email: "ada@example.com" })
+
 Update a user's name
 → update(resource: "User", id: 42, attributes: { name: "New name" })
 ```
 
-The `update` tool applies the same rules as the ActiveAdmin UI:
+Both tools dispatch the resource's own ActiveAdmin `create` or `update`
+action, so a write from MCP is the same write the admin UI makes:
 
-- **Editable resources only** — resources registered without the `update`
-  action (e.g. `actions :index, :show`) are refused.
-- **Authorization** — the change runs through the resource namespace's
-  authorization adapter for the authenticated MCP user, so it can only update
-  what that user is allowed to update in admin.
+- **Registered actions only** — resources registered without the action
+  (e.g. `actions :index, :show`) are refused.
+- **Authorization** — the write runs through the resource namespace's
+  authorization adapter for the authenticated MCP user, both before dispatch
+  and again inside the controller, so it can only write what that user is
+  allowed to write in admin.
 - **Permitted fields only** — attributes are filtered through the resource's
   `permit_params`; fields the admin form doesn't accept are silently dropped.
+  A resource that declares no `permit_params` at all is refused outright, with
+  a message saying so — ActiveAdmin cannot write such a resource through its
+  own forms either.
+- **Your callbacks run** — ActiveAdmin's `before_build`, `before_create`,
+  `before_save`, `after_update` and friends all fire, because the controller
+  action is what fires them.
+
+A write rejected by the model comes back as a `Validation failed` error with
+the model's own messages in `details`, and nothing is written.
 
 ### Running member, collection and batch actions
 

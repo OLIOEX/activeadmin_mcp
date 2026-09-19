@@ -58,10 +58,10 @@ RSpec.describe ActiveadminMcp::RequestHandler do
     describe "tools/list" do
       before { allow(ActiveadminMcp::ActionCatalog).to receive(:all).and_return([]) }
 
-      it "advertises the list_resources, query and update tools" do
+      it "advertises the list_resources, query, create and update tools" do
         tools = handle("tools/list")[:result][:tools]
 
-        expect(tools.map { |t| t[:name] }).to contain_exactly("list_resources", "query", "update")
+        expect(tools.map { |t| t[:name] }).to contain_exactly("list_resources", "query", "create", "update")
       end
 
       it "marks resource as required on the query tool" do
@@ -76,6 +76,13 @@ RSpec.describe ActiveadminMcp::RequestHandler do
         update = tools.find { |t| t[:name] == "update" }
 
         expect(update[:inputSchema][:required]).to contain_exactly("resource", "id", "attributes")
+      end
+
+      it "requires resource and attributes on the create tool" do
+        tools = handle("tools/list")[:result][:tools]
+        create = tools.find { |t| t[:name] == "create" }
+
+        expect(create[:inputSchema][:required]).to contain_exactly("resource", "attributes")
       end
     end
 
@@ -94,6 +101,15 @@ RSpec.describe ActiveadminMcp::RequestHandler do
       response = handle("tools/call", { "name" => name, "arguments" => arguments })
       text = response[:result][:content].first[:text]
       JSON.parse(text)
+    end
+
+    def call_tool_as(current_user, name, arguments = {})
+      response = described_class.new(current_user: current_user).handle(
+        "id" => 1,
+        "method" => "tools/call",
+        "params" => { "name" => name, "arguments" => arguments },
+      )
+      JSON.parse(response[:result][:content].first[:text])
     end
 
     def resource_config(authorized: true)
@@ -212,27 +228,49 @@ RSpec.describe ActiveadminMcp::RequestHandler do
           .to eq("error" => "attributes are required")
       end
 
-      it "delegates to the record updater with the resource and current user" do
+      it "delegates to the record writer with the resource and current user" do
         resource = { name: "User", model: double, config: double }
         allow(ActiveadminMcp::ResourceRegistry).to receive(:find).with("User").and_return(resource)
-        updater = instance_double(ActiveadminMcp::RecordUpdater, call: { updated: [:name] })
-        allow(ActiveadminMcp::RecordUpdater).to receive(:new).and_return(updater)
+        writer = instance_double(ActiveadminMcp::RecordWriter, update: { updated: [:name] })
+        allow(ActiveadminMcp::RecordWriter).to receive(:new).and_return(writer)
 
-        handler = described_class.new(current_user: :admin)
-        response = handler.handle(
-          "id" => 1,
-          "method" => "tools/call",
-          "params" => {
-            "name" => "update",
-            "arguments" => { "resource" => "User", "id" => 7, "attributes" => { "name" => "x" } },
-          },
-        )
-        result = JSON.parse(response[:result][:content].first[:text])
+        result = call_tool_as(:admin, "update", "resource" => "User", "id" => 7, "attributes" => { "name" => "x" })
 
-        expect(ActiveadminMcp::RecordUpdater).to have_received(:new)
+        expect(ActiveadminMcp::RecordWriter).to have_received(:new)
           .with(resource: resource, current_user: :admin)
-        expect(updater).to have_received(:call).with(id: 7, attributes: { "name" => "x" })
+        expect(writer).to have_received(:update).with(id: 7, attributes: { "name" => "x" })
         expect(result).to eq("updated" => ["name"])
+      end
+    end
+
+    describe "create" do
+      it "returns an error when the resource is not found" do
+        allow(ActiveadminMcp::ResourceRegistry).to receive(:find).with("Ghost").and_return(nil)
+
+        expect(call_tool("create", "resource" => "Ghost", "attributes" => { "name" => "x" }))
+          .to eq("error" => "Resource not found: Ghost")
+      end
+
+      it "returns an error when no attributes are given" do
+        allow(ActiveadminMcp::ResourceRegistry).to receive(:find)
+          .with("User").and_return(name: "User", model: double, config: double)
+
+        expect(call_tool("create", "resource" => "User"))
+          .to eq("error" => "attributes are required")
+      end
+
+      it "delegates to the record writer with the resource and current user" do
+        resource = { name: "User", model: double, config: double }
+        allow(ActiveadminMcp::ResourceRegistry).to receive(:find).with("User").and_return(resource)
+        writer = instance_double(ActiveadminMcp::RecordWriter, create: { id: 7 })
+        allow(ActiveadminMcp::RecordWriter).to receive(:new).and_return(writer)
+
+        result = call_tool_as(:admin, "create", "resource" => "User", "attributes" => { "name" => "x" })
+
+        expect(ActiveadminMcp::RecordWriter).to have_received(:new)
+          .with(resource: resource, current_user: :admin)
+        expect(writer).to have_received(:create).with(attributes: { "name" => "x" })
+        expect(result).to eq("id" => 7)
       end
     end
 
