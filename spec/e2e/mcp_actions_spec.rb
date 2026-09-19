@@ -62,6 +62,18 @@ RSpec.describe "MCP actions declared with an mcp: option" do
     end
   end
 
+  describe "calling an action that was never opted in" do
+    # Absence from tools/list is not by itself a guarantee: a tool that were
+    # merely hidden but still dispatchable by name would be a hole, not a
+    # nicety. This asserts the call side of the opt-in promise.
+    it "refuses a member_action registered without an mcp: key as an unknown tool, and leaves the record untouched" do
+      result = client.call_tool("post_archive", id: post_id("small-gods"))
+
+      expect(result["error"]).to eq("Unknown tool: post_archive")
+      expect(post_status("small-gods")).to eq("draft")
+    end
+  end
+
   describe "calling an opted-in batch action" do
     it "applies to exactly the selected records, leaving an unselected record untouched" do
       selected_id = post_id("a-wizard-of-earthsea")
