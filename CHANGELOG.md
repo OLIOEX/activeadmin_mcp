@@ -44,6 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   underlying exception message is written to the log instead of being sent to
   the MCP client, where it could disclose SQL, table names or file paths.
 
+- Publishing a GitHub Release now attaches the Claude Desktop bundle to it as
+  `activeadmin-mcp-X.Y.Z.mcpb`, so installing the bundle no longer means
+  digging a build artifact out of the Actions tab.
+
 ### Changed
 
 - **Behaviour change:** `update` now dispatches the resource's real ActiveAdmin
@@ -61,6 +65,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   echoed back in the result has the same sensitive attributes stripped from it
   (`encrypted_password`, `password_digest`, `reset_password_token`, `api_key`,
   `secret`) that `list_resources` and `query` already omit.
+
+- The release tag is now the source of truth for the bundle's version too: the
+  release workflow writes it into `mcpb/manifest.json` and `mcpb/package.json`
+  before packing, and commits the bump back alongside `version.rb`. The gem and
+  the bundle can no longer drift apart, and nobody has to remember the manual
+  bump the README used to ask for.
 
 - **Breaking:** the minimum supported Ruby is now 4.0 and the minimum Rails is
   7.2, and ActiveAdmin is constrained to `~> 3.5`. Applications outside those
