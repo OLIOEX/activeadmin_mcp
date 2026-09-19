@@ -25,6 +25,15 @@ Each one exists to give a claim in the README something to bite on:
     description — its param type is inherited from `form:` — so the suite can
     prove a batch action applies to exactly the selected records and leaves
     the rest untouched.
+  - `member_action :explode` raises from its body, so the suite can prove a
+    failing action comes back as a generic error naming the resource and
+    action, with the exception's own message — which can carry SQL, table
+    names and file paths — kept away from the MCP client.
+  - `member_action :feature` carries a `permission:` proc that takes the
+    record and returns a refusal *string* for a draft post, so the suite can
+    prove a record-aware proc keeps its tool advertised (it cannot be resolved
+    at listing time), refuses at call time with the proc's own wording, and
+    allows the call once the record satisfies it.
   - `collection_action :purge_drafts` is opted in via `mcp:` with a
     zero-argument `permission:` proc that calls `current_admin_user`, so the
     suite can prove the proc is evaluated in controller context at

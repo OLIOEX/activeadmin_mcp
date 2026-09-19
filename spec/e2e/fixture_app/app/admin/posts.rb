@@ -39,6 +39,32 @@ ActiveAdmin.register Post do
     redirect_to collection_path, notice: "Status updated"
   end
 
+  # The body raises deliberately, so the e2e suite can prove an action that
+  # blows up comes back as a generic error naming the resource and action,
+  # with the exception's own message kept away from the MCP client — it can
+  # carry SQL, table names and file paths.
+  member_action :explode, method: :post, mcp: {
+    description: "Always raises, so the error path has something to bite on",
+  } do
+    raise ActiveRecord::StatementInvalid, "SQLite3::SQLException: no such table: classified_dossier"
+  end
+
+  # Opted in with a `permission:` proc that takes the record. A proc needing a
+  # record cannot be resolved at tools/list time, so the tool stays advertised
+  # and the proc runs at call time instead. It returns a String for a draft
+  # post, which the client should see as the refusal reason, and true once the
+  # post has been published — so the suite can prove the proc is consulted
+  # per record rather than simply always refusing.
+  member_action :feature, method: :post, mcp: {
+    description: "Feature a published post on the front page",
+    permission: lambda { |post|
+      post.status == "draft" ? "Only a published post can be featured" : true
+    },
+  } do
+    resource.update!(status: "featured")
+    redirect_to resource_path(resource), notice: "Featured"
+  end
+
   # Opted in via `mcp:` with a ZERO-ARGUMENT `permission:` proc that calls
   # `current_admin_user`, so the e2e suite can prove the proc is evaluated in
   # controller context at tools/list time. `current_admin_user` is only
