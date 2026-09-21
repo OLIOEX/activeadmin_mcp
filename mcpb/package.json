@@ -1,6 +1,6 @@
 {
   "name": "activeadmin-mcp-mcpb",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Claude Desktop bundle bridging stdio to an activeadmin_mcp HTTP server",
   "type": "module",
