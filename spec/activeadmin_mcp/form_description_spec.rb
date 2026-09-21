@@ -80,6 +80,24 @@ RSpec.describe ActiveadminMcp::FormDescription do
       expect(attribute(result, "name")[:required]).to be(true)
     end
 
+    # ActiveAdmin's own default form is a bare `f.inputs`, which Formtastic
+    # expands only at render time. A resource writing that out by hand has a
+    # form block with nothing in it to read, which is not the same as a form
+    # that permits nothing.
+    it "falls back to permitted params when the form block declares no inputs of its own" do
+      result = describe_form("Roster")
+
+      expect(result[:source]).to eq("permit_params")
+      expect(result[:attributes].map { |attribute| attribute[:name] }).to eq(%w[name notes])
+    end
+
+    it "resolves a block-form permit_params, which ActiveAdmin evaluates on the controller" do
+      result = describe_form("Placement")
+
+      expect(result[:error]).to be_nil
+      expect(result[:attributes].map { |attribute| attribute[:name] }).to eq(%w[name notes])
+    end
+
     it "refuses a resource that declares no permit_params either, because nothing may be written" do
       expect(describe_form("Sighting")[:error]).to match(/permit_params/)
     end

@@ -107,6 +107,35 @@ RSpec.describe ActiveadminMcp::FormFieldCollector do
     end
   end
 
+  # Formtastic's other route into an association's fields. has_many already
+  # reports one as a nested group; flattening this one would advertise the
+  # associated record's fields as attributes of the record being written.
+  it "records an inputs block scoped to an association as a nested group, as it does has_many" do
+    inputs = collect do |_f|
+      input :title
+      inputs for: :author do |a|
+        a.input :name
+      end
+    end
+
+    expect(inputs).to eq(
+      [
+        { name: :title },
+        { name: :author, nested: [{ name: :name }] },
+      ]
+    )
+  end
+
+  it "still descends into a plain inputs block, which is not scoped to anything" do
+    inputs = collect do |_f|
+      inputs "Details" do
+        input :title
+      end
+    end
+
+    expect(inputs).to eq([{ name: :title }])
+  end
+
   it "records each field once when a form declares the same input twice" do
     inputs = collect do |_f|
       input :title

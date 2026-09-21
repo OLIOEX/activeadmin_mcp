@@ -47,6 +47,26 @@ ActiveRecord::Schema.define do
     t.timestamps
   end
 
+  # Registered with a form block that declares no inputs of its own, leaving
+  # Formtastic to expand a bare `f.inputs` at render time — the shape of
+  # ActiveAdmin's own default form. There is nothing there to read, so the
+  # description has to fall back to permitted params.
+  create_table :rosters, force: true do |t|
+    t.string :name
+    t.string :notes
+    t.timestamps
+  end
+
+  # Registered with a block-form permit_params that reads controller state,
+  # which ActiveAdmin instance_execs on the controller. Resolving it against a
+  # controller with no MCP user on it raises, so this is the fixture that keeps
+  # the resolution honest about needing controller context.
+  create_table :placements, force: true do |t|
+    t.string :name
+    t.string :notes
+    t.timestamps
+  end
+
   create_table :admin_users, force: true do |t|
     t.string :email
     t.timestamps
@@ -57,6 +77,8 @@ class Volunteer < ActiveRecord::Base
   validates :name, presence: true
 end
 class Note < ActiveRecord::Base; end
+class Placement < ActiveRecord::Base; end
+class Roster < ActiveRecord::Base; end
 class Shift < ActiveRecord::Base
   has_many :sightings
   accepts_nested_attributes_for :sightings
@@ -200,6 +222,21 @@ ActiveAdmin.register Shift do
     f.has_many :sightings do |sighting|
       sighting.input :species
     end
+    f.actions
+  end
+end
+
+ActiveAdmin.register Placement do
+  permit_params do
+    current_admin_user ? %i[name notes] : %i[name]
+  end
+end
+
+ActiveAdmin.register Roster do
+  permit_params :name, :notes
+
+  form do |f|
+    f.inputs
     f.actions
   end
 end
