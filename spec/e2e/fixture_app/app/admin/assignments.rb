@@ -8,6 +8,11 @@
 #     expand a bare `f.inputs` at render time, as ActiveAdmin's own default
 #     form does — so there is nothing in the block to read and the description
 #     has to come from the permitted params instead.
+#
+# `secret_note` is a column neither branch of the block permits, so the suite
+# has something the block withholds as well as something it grants: an example
+# that only ever writes a permitted attribute cannot tell a block that filters
+# from one whose result is ignored.
 ActiveAdmin.register Assignment do
   permit_params do
     current_admin_user ? %i[name notes] : %i[name]
