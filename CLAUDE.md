@@ -64,6 +64,38 @@ a snapshot taken after migrating and seeding. So examples must not depend on
 what another one left behind, and the suite runs in random order to keep that
 honest. Write each one as though it runs alone, because it might.
 
+### Cover the declaration shapes, not only the behaviours
+
+The rule above asks for an e2e test per MCP action. That is necessary and it is
+not sufficient, because it is organised around what this gem does rather than
+around what the applications it reads look like. Nearly every defect found in
+review so far has been the same thing: a shape of ActiveAdmin declaration that
+no fixture used, so no test could fail on it.
+
+So, for any ActiveAdmin construct this gem reads, enumerate the forms
+ActiveAdmin accepts and make sure a fixture exists for each. For example
+`permit_params` may be a list, a block, a block that reaches for controller
+state, absent entirely, or set on the namespace; a `form` block may declare
+inputs, declare none and leave Formtastic to expand a bare `f.inputs`, or nest
+with `has_many` or `inputs for:`; a `batch_action` may be named with a symbol
+or a String title, and its `form:` may be a hash or a proc.
+
+**When you read ActiveAdmin's source to answer a question, enumerate the
+branches you did not take.** Two of those defects were in lines already quoted
+in the notes justifying the change — `block ? instance_exec(&block) : args` and
+a bare `f.inputs` in ActiveAdmin's own default form. The information was not
+missing; the question "what else does this line permit?" was never asked.
+
+**Mutation checking does not cover this, and can disguise it.** Breaking a
+fixture and watching the example fail proves the test is sensitive to that
+fixture. It says nothing about a shape no fixture has, and no mutation of the
+existing fixtures will ever reveal one. Treat a passing mutation check as
+evidence about test sensitivity, and never describe it as evidence of coverage.
+
+When the shapes are invented rather than observed, they tend to match whatever
+was just built. Prefer shapes taken from real applications or from ActiveAdmin's
+own source and test suite.
+
 ### Writing an e2e example
 
 `E2E::McpClient` speaks the protocol: `tools_list` returns the `tools/list`

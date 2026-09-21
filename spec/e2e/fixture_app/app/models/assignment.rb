@@ -1,9 +1,4 @@
-class Review < ApplicationRecord
-  belongs_to :post, optional: true
-  accepts_nested_attributes_for :post
-
-  validates :body, presence: true
-
+class Assignment < ApplicationRecord
   # See the note in post.rb: Ransack 4 requires an explicit allowlist.
   def self.ransackable_attributes(_auth_object = nil)
     column_names

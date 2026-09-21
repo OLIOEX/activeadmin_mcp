@@ -104,6 +104,29 @@ RSpec.describe "the MCP tools" do
       end
     end
 
+    # Two declaration shapes the rest of the fixture application does not use.
+    # Both were wrong when first shipped, and neither could fail against a
+    # suite whose every resource declared permit_params as a list.
+    context "for a resource declared in the less common shapes" do
+      let(:result) { client.call_tool("describe_form", resource: "Assignment") }
+
+      it "resolves a permit_params block that reads controller state, rather than reporting the resource as permitting nothing" do
+        expect(result["error"]).to be_nil
+        expect(result["attributes"].map { |attribute| attribute["name"] }).to eq(%w[name notes])
+      end
+
+      it "falls back to permitted params when the form block leaves its inputs to Formtastic" do
+        expect(result["source"]).to eq("permit_params")
+      end
+    end
+
+    it "reports an association's fields as nested rather than as attributes of the record itself" do
+      result = client.call_tool("describe_form", resource: "Review")
+
+      expect(result["attributes"].map { |attribute| attribute["name"] }).not_to include("title")
+      expect(result["nested"]).to include("name" => "post", "attributes" => [{ "name" => "title" }])
+    end
+
     it "describes the edit form when asked for it" do
       result = client.call_tool("describe_form", resource: "Post", action: "edit")
 
@@ -165,6 +188,19 @@ RSpec.describe "the MCP tools" do
       expect(result["error"]).to match(/validation/i)
       expect(result["details"]).to include("Title can't be blank")
       expect(posts.length).to eq(3)
+    end
+
+    it "creates a record for a resource whose permit_params is a block reading controller state" do
+      result = client.call_tool(
+        "create",
+        resource: "Assignment",
+        attributes: { name: "Saturday sort", notes: "Two volunteers" }
+      )
+
+      expect(result["error"]).to be_nil
+
+      created = client.call_tool("query", resource: "Assignment", q: { id_eq: result["id"] })["records"].first
+      expect(created).to include("name" => "Saturday sort", "notes" => "Two volunteers")
     end
 
     it "refuses to create a record for a resource registered without the create action" do

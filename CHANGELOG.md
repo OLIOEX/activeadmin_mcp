@@ -88,6 +88,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `activeadmin-mcp-X.Y.Z.mcpb`, so installing the bundle no longer means
   digging a build artifact out of the Actions tab.
 
+### Fixed
+
+- A resource whose `permit_params` is a block was refused by `create`, `update`
+  and `describe_form` with `Resource declares no permit_params, so nothing may
+  be written`, which was not merely unhelpful but wrong. ActiveAdmin
+  `instance_exec`s such a block on the controller, and the gem resolved it
+  against a bare controller instance, so a block reading `current_admin_user`
+  raised `NameError` — and the rescue that exists to recognise a resource with
+  no `permit_params` at all swallowed it. The block is now resolved against a
+  controller carrying the MCP user, as a dispatched call gets.
+
+- `describe_form` reported no writable attributes at all for a resource whose
+  `form` block declares none of its own — `form do |f| f.inputs; f.actions end`,
+  the shape of ActiveAdmin's own default form, where Formtastic expands the
+  inputs only at render time. There is nothing in such a block to read, so the
+  description now falls back to the resource's permitted params, as it already
+  did for a resource with no `form` block.
+
+- `describe_form` reported the fields of an `inputs for: :association` block as
+  attributes of the record being described, rather than as a nested group.
+  They belong to the associated record and `create` and `update` will drop
+  them. `has_many` was already handled this way; both routes into an
+  association's fields now behave the same.
+
 ### Changed
 
 - A batch action's own ActiveAdmin `:if` proc is now honoured: one the admin UI

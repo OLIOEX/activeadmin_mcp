@@ -32,7 +32,14 @@ module ActiveadminMcp
       self
     end
 
-    def inputs(*_args, **_opts, &block)
+    # `inputs for: :author` scopes its fields to an association, the same way
+    # has_many does; only an unscoped `inputs` groups fields of the record
+    # itself. Descending into a scoped one would advertise the associated
+    # record's fields as attributes of the record being written.
+    def inputs(*_args, **options, &block)
+      association = options[:for]
+      return nest(association, &block) if association
+
       instance_exec(self, &block) if block
       self
     end
@@ -41,11 +48,7 @@ module ActiveadminMcp
     # can tell an association's fields from the record's own. Flattening them
     # would advertise `body` as an attribute of the parent record.
     def has_many(name, *_args, **_opts, &block)
-      return self unless name.respond_to?(:to_sym)
-      return self if declared?(name.to_sym)
-
-      @inputs << { name: name.to_sym, nested: block ? self.class.new.collect(&block) : [] }
-      self
+      nest(name, &block)
     end
 
     def method_missing(_name, *_args, **_opts, &block)
@@ -58,6 +61,17 @@ module ActiveadminMcp
     end
 
     private
+
+    # `for:` may name the association or give it as [name, object]; only the
+    # name says anything to a client.
+    def nest(association, &block)
+      name = association.is_a?(Array) ? association.first : association
+      return self unless name.respond_to?(:to_sym)
+      return self if declared?(name.to_sym)
+
+      @inputs << { name: name.to_sym, nested: block ? self.class.new.collect(&block) : [] }
+      self
+    end
 
     def declared?(name)
       @inputs.any? { |input| input[:name] == name }

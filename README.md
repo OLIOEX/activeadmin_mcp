@@ -174,6 +174,13 @@ Two limits worth knowing:
 - A field a form block declares but `permit_params` omits is described and then
   silently dropped on write. This cannot arise on the `permit_params` fallback
   path.
+- On the `permit_params` fallback path, only fields backed by a database column
+  are reported. ActiveAdmin keeps no list of the params it permits — only a
+  method that filters against them — so the names are recovered by offering it
+  every column the model has and seeing which survive. Permitted params that
+  are not columns, such as `tag_ids` or a nested `*_attributes` key, are
+  therefore missing from the description even though `create` and `update`
+  will accept them.
 
 ### Running member, collection and batch actions
 

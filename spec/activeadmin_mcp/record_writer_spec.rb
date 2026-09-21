@@ -8,6 +8,7 @@ RSpec.describe ActiveadminMcp::RecordWriter do
   let(:sightings) { ActiveadminMcp::ResourceRegistry.find("Sighting") }
 
   after do
+    Placement.delete_all
     Volunteer.delete_all
     Sighting.delete_all
     AdminUser.delete_all
@@ -85,6 +86,31 @@ RSpec.describe ActiveadminMcp::RecordWriter do
       result = writer(volunteers).create(attributes: { "name" => "Ann" })
 
       expect(result[:record]).not_to have_key("name")
+    end
+  end
+
+  # ActiveAdmin instance_execs a block-form permit_params on the controller, so
+  # resolving it needs the same controller context a dispatched call gets. A
+  # bare controller instance cannot answer current_admin_user, and a resolution
+  # that rescues the resulting NameError reports the resource as declaring no
+  # permitted params at all.
+  describe "a resource whose permit_params is a block reading controller state" do
+    let(:placements) { ActiveadminMcp::ResourceRegistry.find("Placement") }
+
+    it "creates the record, writing every attribute the block permitted" do
+      result = writer(placements).create(attributes: { "name" => "Ann", "notes" => "Weekends" })
+
+      expect(result[:error]).to be_nil
+      expect(Placement.find(result[:id])).to have_attributes(name: "Ann", notes: "Weekends")
+    end
+
+    it "updates the record rather than refusing it for want of permitted params" do
+      placement = Placement.create!(name: "Ann")
+
+      result = writer(placements).update(id: placement.id, attributes: { "notes" => "Weekends" })
+
+      expect(result[:error]).to be_nil
+      expect(placement.reload.notes).to eq("Weekends")
     end
   end
 

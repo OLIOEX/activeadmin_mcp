@@ -29,8 +29,12 @@ module ActiveadminMcp
       refusal = write_refusal(write_action)
       return refusal if refusal
 
+      # An empty result is not the same as no form block, but it means the same
+      # thing here: ActiveAdmin's own default form is a bare `f.inputs` that
+      # Formtastic expands only at render time, so a block written that way has
+      # nothing in it to read and the permitted params are all there is.
       declared = declared_inputs
-      return describe(action, "form", declared) if declared
+      return describe(action, "form", declared) if declared&.any?
 
       permitted = permitted_inputs
       return permit_params_refusal unless permitted
@@ -114,9 +118,13 @@ module ActiveadminMcp
       names.map { |name| { name: name } }
     end
 
+    # The controller carries the MCP user: ActiveAdmin instance_execs a
+    # block-form permit_params on it, so a block reading current_admin_user
+    # raises on a bare instance and the resource looks unwritable.
     def permitted_names
       param_key = @config.param_key.to_sym
-      controller = @config.controller.new
+      controller = ControllerDispatcher.new(config: @config, current_user: @current_user)
+                                       .controller_with_mcp_user
       controller.params = ActionController::Parameters.new(
         param_key => @resource[:model].column_names.index_with { nil }
       )
