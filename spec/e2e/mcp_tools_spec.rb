@@ -267,6 +267,40 @@ RSpec.describe "the MCP tools" do
       expect(reread["title"]).to eq("Small Gods")
     end
 
+    # `resolve_permitted` gates update as well as create, and the block it
+    # resolves is the resource's only statement of what may be written.
+    context "for a resource whose permit_params is a block reading controller state" do
+      def assignment(name)
+        client.call_tool("query", resource: "Assignment", q: { name_eq: name })["records"].first
+      end
+
+      it "updates the named record, rather than refusing it as a resource that permits nothing" do
+        result = client.call_tool(
+          "update",
+          resource: "Assignment",
+          id: assignment("Saturday sort")["id"],
+          attributes: { notes: "Three volunteers" }
+        )
+
+        expect(result["error"]).to be_nil
+        expect(result["updated"]).to eq(["notes"])
+        expect(assignment("Saturday sort")["notes"]).to eq("Three volunteers")
+        expect(assignment("Sunday sort")["notes"]).to eq("One volunteer")
+      end
+
+      it "drops an attribute neither branch of the block permits" do
+        result = client.call_tool(
+          "update",
+          resource: "Assignment",
+          id: assignment("Saturday sort")["id"],
+          attributes: { notes: "Three volunteers", secret_note: "tampered" }
+        )
+
+        expect(result["updated"]).to eq(["notes"])
+        expect(assignment("Saturday sort")["secret_note"]).to eq("Not for the rota")
+      end
+    end
+
     it "refuses to update a resource that declares no permitted params" do
       tag_id = client.call_tool("query", resource: "Tag")["records"].first["id"]
 

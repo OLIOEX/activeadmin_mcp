@@ -41,3 +41,19 @@ end
 # something to refuse. Nothing mutates it: the examples that name it assert it
 # is unchanged.
 Tag.find_or_initialize_by(name: "fantasy").save!
+
+# Written through the MCP tools by the examples covering a block-form
+# `permit_params`, so seeded restoratively on a name no example rewrites. Two
+# rows, so an example rewriting one can assert the other was left alone.
+# `secret_note` is permitted by neither branch of that block, so an example
+# can prove a write never reaches it.
+{
+  "Saturday sort" => "Two volunteers",
+  "Sunday sort" => "One volunteer",
+}.each do |name, notes|
+  Assignment.find_or_initialize_by(name: name).tap do |assignment|
+    assignment.notes = notes
+    assignment.secret_note = "Not for the rota"
+    assignment.save!
+  end
+end
