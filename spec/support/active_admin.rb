@@ -47,6 +47,26 @@ ActiveRecord::Schema.define do
     t.timestamps
   end
 
+  # Registered with a BLOCK-form permit_params whose block reads
+  # current_admin_user, so a spec can prove the permitted set is resolved in
+  # controller context. ActiveAdmin instance_execs the block on the
+  # controller, so a bare instance raises NameError on it.
+  create_table :rosters, force: true do |t|
+    t.string :name
+    t.string :notes
+    t.timestamps
+  end
+
+  # Registered with a form block that declares no inputs of its own, which is
+  # legal — Formtastic expands a bare f.inputs at render time — so a spec can
+  # prove the description falls back to permitted params rather than
+  # reporting nothing may be written.
+  create_table :bulletins, force: true do |t|
+    t.string :headline
+    t.string :body
+    t.timestamps
+  end
+
   create_table :admin_users, force: true do |t|
     t.string :email
     t.timestamps
@@ -63,6 +83,8 @@ class Shift < ActiveRecord::Base
   validates :name, presence: true
 end
 class Sighting < ActiveRecord::Base; end
+class Roster < ActiveRecord::Base; end
+class Bulletin < ActiveRecord::Base; end
 class AdminUser < ActiveRecord::Base; end
 
 require "active_admin"
@@ -209,6 +231,28 @@ ActiveAdmin.register Note do
 end
 
 ActiveAdmin.register Sighting do
+end
+
+# Block-form permit_params is how an application varies the writable set by
+# user, and the block reads a method only the controller has, so any caller
+# resolving the permitted set outside controller context raises NameError and
+# sees a resource that permits nothing.
+ActiveAdmin.register Roster do
+  permit_params do
+    current_admin_user.email == "admin@example.com" ? %i[name notes] : %i[name]
+  end
+end
+
+# A form block declaring no inputs of its own. Formtastic expands the bare
+# f.inputs at render time against the model, so there is nothing here to read
+# and the permitted params are the better description.
+ActiveAdmin.register Bulletin do
+  permit_params :headline, :body
+
+  form do |f|
+    f.inputs
+    f.actions
+  end
 end
 
 # An authorization adapter that denies everything, used to prove that

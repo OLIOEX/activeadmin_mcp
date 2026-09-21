@@ -32,7 +32,15 @@ module ActiveadminMcp
       self
     end
 
-    def inputs(*_args, **_opts, &block)
+    # An `inputs for: :author` block declares the associated record's fields,
+    # not the record being described, so it is recorded as a group of its own
+    # exactly as `has_many` is. Without the `for:` option the block is simply a
+    # way of grouping the record's own fields under a heading, and is descended
+    # into.
+    def inputs(*_args, **options, &block)
+      association = association_name(options[:for])
+      return nested(association, &block) if association
+
       instance_exec(self, &block) if block
       self
     end
@@ -41,11 +49,10 @@ module ActiveadminMcp
     # can tell an association's fields from the record's own. Flattening them
     # would advertise `body` as an attribute of the parent record.
     def has_many(name, *_args, **_opts, &block)
-      return self unless name.respond_to?(:to_sym)
-      return self if declared?(name.to_sym)
+      association = association_name(name)
+      return self unless association
 
-      @inputs << { name: name.to_sym, nested: block ? self.class.new.collect(&block) : [] }
-      self
+      nested(association, &block)
     end
 
     def method_missing(_name, *_args, **_opts, &block)
@@ -58,6 +65,20 @@ module ActiveadminMcp
     end
 
     private
+
+    def nested(association, &block)
+      return self if declared?(association)
+
+      @inputs << { name: association, nested: block ? self.class.new.collect(&block) : [] }
+      self
+    end
+
+    # Formtastic accepts the association on its own, and also as an array
+    # pairing it with the object to build the fields from.
+    def association_name(declared)
+      name = declared.is_a?(Array) ? declared.first : declared
+      name.to_sym if name.respond_to?(:to_sym)
+    end
 
     def declared?(name)
       @inputs.any? { |input| input[:name] == name }

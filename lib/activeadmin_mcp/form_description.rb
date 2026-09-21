@@ -4,11 +4,12 @@ module ActiveadminMcp
   # from column names.
   #
   # The description is read from the resource's own `form do ... end` block
-  # when it declares one. When it does not, ActiveAdmin renders a bare
-  # `f.inputs` that Formtastic only expands at render time — there is nothing
-  # to introspect — so the description is derived from the resource's
-  # `permit_params` instead, which is what `create` and `update` enforce
-  # anyway. The payload says which of the two it is.
+  # when it declares one with inputs in it. When it does not — no form block,
+  # or a block whose only `f.inputs` is the bare one Formtastic expands at
+  # render time — there is nothing to introspect, so the description is
+  # derived from the resource's `permit_params` instead, which is what
+  # `create` and `update` enforce anyway. The payload says which of the two
+  # it is.
   #
   # Either way each field is annotated from the model: the column type it is
   # stored in, and whether the model validates its presence.
@@ -30,7 +31,7 @@ module ActiveadminMcp
       return refusal if refusal
 
       declared = declared_inputs
-      return describe(action, "form", declared) if declared
+      return describe(action, "form", declared) if declared&.any?
 
       permitted = permitted_inputs
       return permit_params_refusal unless permitted
@@ -104,9 +105,17 @@ module ActiveadminMcp
 
     # ActiveAdmin stores no list of the params it permits, only a method that
     # filters against them, so the permitted names are recovered by offering it
-    # every column the model has and seeing which survive. A resource that
-    # never declared permit_params has no such method to answer, and is
-    # reported as unwritable rather than described.
+    # every column the model has and seeing which survive. A permitted param
+    # that is not a column — `tag_ids`, `*_attributes` — is therefore never
+    # offered and never reported; a resource declaring those should declare a
+    # form block, which is read in full. A resource that never declared
+    # permit_params has no method to answer at all, and is reported as
+    # unwritable rather than described.
+    #
+    # The controller comes from the dispatcher with the MCP user injected,
+    # because ActiveAdmin instance_execs a block-form permit_params on the
+    # controller and a block varying the writable set by user raises NameError
+    # on a bare instance.
     def permitted_inputs
       names = permitted_names
       return nil unless names
@@ -116,7 +125,8 @@ module ActiveadminMcp
 
     def permitted_names
       param_key = @config.param_key.to_sym
-      controller = @config.controller.new
+      controller = ControllerDispatcher.new(config: @config, current_user: @current_user)
+                                       .controller_with_mcp_user
       controller.params = ActionController::Parameters.new(
         param_key => @resource[:model].column_names.index_with { nil }
       )

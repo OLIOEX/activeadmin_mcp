@@ -133,9 +133,16 @@ module ActiveadminMcp
 
     # Asks the resource's own controller what it would permit, or nil when it
     # has nothing to say because permit_params was never declared.
+    #
+    # The controller comes from the dispatcher with the MCP user injected,
+    # because ActiveAdmin instance_execs a block-form permit_params on the
+    # controller: a block varying the writable set by user raises NameError
+    # on a bare instance, and the rescue below would report a resource that
+    # permits plenty as one that permits nothing.
     def resolve_permitted(attributes)
       param_key = @config.param_key.to_sym
-      controller = @config.controller.new
+      controller = ControllerDispatcher.new(config: @config, current_user: @current_user)
+                                       .controller_with_mcp_user
       controller.params = ActionController::Parameters.new(param_key => attributes)
       permitted = controller.send(:permitted_params)
       scoped = permitted && permitted[param_key]

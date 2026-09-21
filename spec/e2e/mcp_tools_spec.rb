@@ -104,6 +104,45 @@ RSpec.describe "the MCP tools" do
       end
     end
 
+    context "for a resource whose form block declares no inputs of its own" do
+      let(:result) { client.call_tool("describe_form", resource: "Bulletin") }
+
+      it "falls back to the resource's permitted params rather than describing a form with no fields" do
+        expect(result["source"]).to eq("permit_params")
+      end
+
+      it "describes the attributes those permitted params accept" do
+        expect(result["attributes"].map { |attribute| attribute["name"] }).to eq(%w[headline body])
+      end
+    end
+
+    context "for a resource whose form block declares an inputs block for an association" do
+      let(:result) { client.call_tool("describe_form", resource: "Dispatch") }
+
+      it "reports the association's fields as a nested group, since they belong to the associated record" do
+        expect(result["nested"]).to eq(
+          [{ "name" => "author", "attributes" => [{ "name" => "name" }] }]
+        )
+      end
+
+      it "keeps the association's fields out of the attributes a write against this resource may set" do
+        expect(result["attributes"].map { |attribute| attribute["name"] }).to eq(%w[headline])
+      end
+    end
+
+    context "for a resource whose permitted params are declared as a block" do
+      let(:result) { client.call_tool("describe_form", resource: "Newsletter") }
+
+      it "describes the attributes the block permits the MCP user, rather than refusing the resource" do
+        expect(result["error"]).to be_nil
+        expect(result["attributes"].map { |attribute| attribute["name"] }).to eq(%w[title body])
+      end
+
+      it "omits an attribute the block permits nobody" do
+        expect(result["attributes"].map { |attribute| attribute["name"] }).not_to include("secret_note")
+      end
+    end
+
     it "describes the edit form when asked for it" do
       result = client.call_tool("describe_form", resource: "Post", action: "edit")
 
@@ -174,6 +213,21 @@ RSpec.describe "the MCP tools" do
       expect(client.call_tool("query", resource: "Author")["count"]).to eq(2)
     end
 
+    it "creates a record for a resource whose permitted params are declared as a block reading the current user" do
+      result = client.call_tool(
+        "create",
+        resource: "Newsletter",
+        attributes: { title: "The Quarterly", body: "Occasionally." }
+      )
+
+      expect(result["error"]).to be_nil
+      expect(result["created"]).to contain_exactly("title", "body")
+
+      created = client.call_tool("query", resource: "Newsletter", q: { id_eq: result["id"] })["records"].first
+      expect(created["title"]).to eq("The Quarterly")
+      expect(created["body"]).to eq("Occasionally.")
+    end
+
     it "refuses to create a record for a resource that declares no permitted params" do
       result = client.call_tool("create", resource: "Tag", attributes: { name: "science-fiction" })
 
@@ -229,6 +283,38 @@ RSpec.describe "the MCP tools" do
 
       reread = client.call_tool("query", resource: "Post", q: { id_eq: post_id })["records"].first
       expect(reread["title"]).to eq("Small Gods")
+    end
+
+    context "for a resource whose permitted params are declared as a block reading the current user" do
+      def newsletter(title)
+        client.call_tool("query", resource: "Newsletter", q: { title_eq: title })["records"].first
+      end
+
+      it "updates the named record, rather than refusing it as a resource that declared no permitted params" do
+        result = client.call_tool(
+          "update",
+          resource: "Newsletter",
+          id: newsletter("The Weekly Dispatch")["id"],
+          attributes: { body: "Rather less, this week." }
+        )
+
+        expect(result["error"]).to be_nil
+        expect(result["updated"]).to eq(["body"])
+        expect(newsletter("The Weekly Dispatch")["body"]).to eq("Rather less, this week.")
+        expect(newsletter("The Monthly Review")["body"]).to eq("Everything that did not.")
+      end
+
+      it "drops an attribute the block permits nobody" do
+        result = client.call_tool(
+          "update",
+          resource: "Newsletter",
+          id: newsletter("The Weekly Dispatch")["id"],
+          attributes: { body: "Revised.", secret_note: "tampered" }
+        )
+
+        expect(result["updated"]).to eq(["body"])
+        expect(newsletter("The Weekly Dispatch")["secret_note"]).to eq("Not for the newsletter")
+      end
     end
 
     it "refuses to update a resource that declares no permitted params" do

@@ -85,6 +85,41 @@ RSpec.describe ActiveadminMcp::FormDescription do
     end
   end
 
+  # ActiveAdmin instance_execs a block-form permit_params on the controller,
+  # so the permitted set can only be resolved in controller context. Resolved
+  # anywhere else the block raises, and a resource that permits plenty is
+  # reported as permitting nothing at all.
+  describe "a resource whose permit_params is declared as a block" do
+    it "describes the attributes the block permits for the MCP user" do
+      expect(describe_form("Roster")[:attributes].map { |attribute| attribute[:name] }).to eq(
+        %w[name notes]
+      )
+    end
+
+    it "says the description was derived from the resource's permitted params" do
+      expect(describe_form("Roster")[:source]).to eq("permit_params")
+    end
+
+    it "does not mistake a block it could not evaluate for a resource that declared no permit_params" do
+      expect(describe_form("Roster")[:error]).to be_nil
+    end
+  end
+
+  # A bare f.inputs is expanded by Formtastic at render time against the
+  # model, so a form block declaring nothing of its own describes nothing —
+  # but the resource's permitted params still do.
+  describe "a resource whose form block declares no inputs of its own" do
+    it "falls back to the resource's permitted params rather than reporting an empty form" do
+      expect(describe_form("Bulletin")[:source]).to eq("permit_params")
+    end
+
+    it "describes the attributes those permitted params accept" do
+      expect(describe_form("Bulletin")[:attributes].map { |attribute| attribute[:name] }).to eq(
+        %w[headline body]
+      )
+    end
+  end
+
   describe "choosing which form to describe" do
     it "describes the new form by default" do
       expect(describe_form("Shift")[:action]).to eq("new")

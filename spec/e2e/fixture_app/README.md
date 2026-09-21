@@ -41,6 +41,23 @@ Each one exists to give a claim in the README something to bite on:
     tool.
 - `app/admin/authors.rb` registers `actions :index, :show`, so the suite can
   prove `update` refuses a resource the admin UI would not let you edit.
+- `app/admin/newsletters.rb` declares its `permit_params` in the **block**
+  form, and the block reads `current_admin_user`, so the suite can prove the
+  permitted set is resolved in controller context. Asked of a bare controller
+  instance the block raises `NameError`, which reads as "this resource
+  declared no `permit_params`" and refuses `create`, `update` and
+  `describe_form` outright. Its `secret_note` is permitted to nobody, so
+  there is something the block withholds as well as something it grants.
+- `app/admin/bulletins.rb` declares a form block containing a bare `f.inputs`
+  and nothing else — legal, because Formtastic expands it against the model
+  at render time — so the suite can prove `describe_form` falls back to
+  `permit_params` rather than reporting a form with no fields at all.
+- `app/admin/dispatches.rb` declares a form block whose second `f.inputs`
+  names an association with `for:`, so the suite can prove the associated
+  record's fields are reported as a `nested` group rather than flattened in
+  with the dispatch's own — where a client would read them as attributes a
+  write against a dispatch could set, and `create` and `update` would drop
+  them.
 - `app/models/*.rb` allowlist `ransackable_attributes`, which Ransack 4
   requires before it will filter on an attribute at all.
 - `db/migrate/*.rb` create the `authors` and `posts` tables, and add the

@@ -123,7 +123,10 @@ action, so a write from MCP is the same write the admin UI makes:
   so a `slug` sent to a `Post` permitting only `title` and `body` never
   reaches the record. A resource that declares no `permit_params` at all (like
   `Tag`) is refused outright, with a message saying so — ActiveAdmin cannot
-  write such a resource through its own forms either.
+  write such a resource through its own forms either. A block-form
+  `permit_params` is evaluated in controller context as the authenticated MCP
+  user, so a block varying the writable set by user gets the same answer it
+  would give that user in admin.
 - **Your callbacks run** — ActiveAdmin's `before_build`, `before_create`,
   `before_save`, `after_update` and friends all fire, because the controller
   action is what fires them. A `before_create` that fills in a `slug` the form
@@ -154,8 +157,14 @@ at render time, so there is nothing to read. The response's `source` says which
 of the two you are looking at.
 
 Either way every field is annotated from the model with the column type it is
-stored in and whether the model validates its presence. `has_many` blocks are
-reported under `nested` rather than flattened in with the record's own fields.
+stored in and whether the model validates its presence. An associated record's
+fields — declared with `has_many`, or with `inputs for: :author` — are reported
+under `nested` rather than flattened in with the record's own, because a write
+against the parent would drop them.
+
+A form block that declares no inputs of its own is described from
+`permit_params` too. A bare `f.inputs` is legal, and Formtastic only expands it
+against the model at render time, so there is nothing in the block to read.
 
 `action:` selects the gate, not the shape — ActiveAdmin uses one form block for
 both. `"new"` (the default) requires the resource to register `create` and pass
@@ -164,7 +173,7 @@ never submit tells you nothing you can act on, so it is refused with the same
 messages `create` and `update` use: `Author` is not creatable, and `Tag`
 declares no permitted params.
 
-Two limits worth knowing:
+Three limits worth knowing:
 
 - A `collection:` that is an `ActiveRecord::Relation` or a proc is omitted
   rather than evaluated. Describing a form should not fire a query, and a
@@ -174,6 +183,15 @@ Two limits worth knowing:
 - A field a form block declares but `permit_params` omits is described and then
   silently dropped on write. This cannot arise on the `permit_params` fallback
   path.
+- On the `permit_params` fallback path, only attributes backed by a database
+  column are reported. ActiveAdmin keeps no list of the params it permits, only
+  a method that filters against them, so the names are recovered by offering
+  that method every column the model has and seeing which survive. A permitted
+  param that is not a column — `tag_ids`, or a `*_attributes` key from
+  `accepts_nested_attributes_for` — is never offered and so never appears,
+  even though `create` and `update` will happily write it. Declare a
+  `form do ... end` block on such a resource and `describe_form` reads it in
+  full, associations included.
 
 ### Running member, collection and batch actions
 

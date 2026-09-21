@@ -6,10 +6,12 @@ RSpec.describe ActiveadminMcp::RecordWriter do
   let(:volunteers) { ActiveadminMcp::ResourceRegistry.find("Volunteer") }
   let(:notes) { ActiveadminMcp::ResourceRegistry.find("Note") }
   let(:sightings) { ActiveadminMcp::ResourceRegistry.find("Sighting") }
+  let(:rosters) { ActiveadminMcp::ResourceRegistry.find("Roster") }
 
   after do
     Volunteer.delete_all
     Sighting.delete_all
+    Roster.delete_all
     AdminUser.delete_all
   end
 
@@ -162,6 +164,28 @@ RSpec.describe ActiveadminMcp::RecordWriter do
       result = writer(volunteers).update(id: volunteer.id, attributes: { "name" => "Bea" })
 
       expect(result[:record]).not_to have_key("name")
+    end
+  end
+
+  # ActiveAdmin instance_execs a block-form permit_params on the controller,
+  # so a block reading current_admin_user can only be resolved in controller
+  # context. Resolved anywhere else it raises, and a resource that permits
+  # plenty is refused as one that permits nothing.
+  describe "a resource whose permit_params is declared as a block" do
+    it "creates the record, writing the attributes the block permits for the MCP user" do
+      result = writer(rosters).create(attributes: { "name" => "Weekends", "notes" => "Two shifts" })
+
+      expect(result[:error]).to be_nil
+      expect(Roster.find(result[:id])).to have_attributes(name: "Weekends", notes: "Two shifts")
+    end
+
+    it "updates the record rather than refusing it as declaring no permit_params" do
+      roster = Roster.create!(name: "Weekends")
+
+      result = writer(rosters).update(id: roster.id, attributes: { "name" => "Weekdays" })
+
+      expect(result[:error]).to be_nil
+      expect(roster.reload.name).to eq("Weekdays")
     end
   end
 

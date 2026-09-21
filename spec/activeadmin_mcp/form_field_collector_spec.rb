@@ -73,6 +73,44 @@ RSpec.describe ActiveadminMcp::FormFieldCollector do
     )
   end
 
+  describe "an inputs block declared for an association" do
+    it "records the association as a nested group rather than flattening its fields into the parent" do
+      inputs = collect do |_f|
+        input :title
+        inputs for: :author do |a|
+          a.input :name
+        end
+      end
+
+      expect(inputs).to eq(
+        [
+          { name: :title },
+          { name: :author, nested: [{ name: :name }] },
+        ]
+      )
+    end
+
+    it "records the association named by Formtastic's array form, which passes the object alongside it" do
+      inputs = collect do |_f|
+        inputs "Author", for: [:author, Object.new] do |a|
+          a.input :name
+        end
+      end
+
+      expect(inputs).to eq([{ name: :author, nested: [{ name: :name }] }])
+    end
+
+    it "still descends into an inputs block that names no association, which is how forms group their own fields" do
+      inputs = collect do |_f|
+        inputs "Details" do
+          input :title
+        end
+      end
+
+      expect(inputs).to eq([{ name: :title }])
+    end
+  end
+
   describe "a collection: of allowed values" do
     it "records a literal array of values" do
       inputs = collect { |_f| input :status, as: :select, collection: %w[draft published] }
